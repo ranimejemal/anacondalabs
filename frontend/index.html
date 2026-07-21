@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: http://127.0.0.1:8765 ws://127.0.0.1:8765 https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' http://127.0.0.1:8765 ws://127.0.0.1:8765 https://*.supabase.co; script-src 'self' 'unsafe-inline';">
+<title>AegisLab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="grid-bg" aria-hidden="true"></div>
+<div class="sweep-beam" id="sweepBeam" aria-hidden="true"></div>
+
+<div class="app">
+
+  <!-- ============ SIDEBAR : INSTRUMENT PANEL ============ -->
+  <aside class="panel">
+    <div class="brand">
+      <div class="brand-mark">⛨</div>
+      <div class="brand-text">
+        <h1>AegisLab</h1>
+        <p>API Security Inspection Bench</p>
+        <p class="build-tag" id="buildTag">build v1.3.0</p>
+      </div>
+    </div>
+
+    <section class="panel-section" id="accountSection">
+      <label class="field-label">Account</label>
+      <div id="accountSignedOut">
+        <input class="field-input" id="authEmail" type="email" placeholder="you@example.com" style="margin-bottom:6px;" />
+        <input class="field-input" id="authPassword" type="password" placeholder="password" style="margin-bottom:8px;" />
+        <div style="display:flex; gap:8px;">
+          <button class="btn-ghost" id="signInBtn" style="flex:1;">Sign in</button>
+          <button class="btn-ghost" id="signUpBtn" style="flex:1;">Sign up</button>
+        </div>
+        <p class="field-hint" id="authError"></p>
+        <p class="field-hint">Sign in to unlock real AI fix suggestions. Free accounts get AI suggestions as copy/paste text — Premium gets one-click auto-apply on uploaded source.</p>
+      </div>
+      <div id="accountSignedIn" style="display:none;">
+        <p class="field-hint" style="margin-top:0;">Signed in as <b id="accountEmail"></b> <span id="premiumBadge" class="sev-stamp" style="display:none; background:var(--c-low); margin-left:4px;">PREMIUM</span></p>
+        <button class="btn-primary" id="upgradeBtn" style="width:100%; display:none; margin-bottom:8px;">Upgrade to Premium</button>
+        <button class="btn-ghost" id="manageBillingBtn" style="width:100%; display:none; margin-bottom:8px;">Manage billing</button>
+        <p class="field-hint" id="billingStatus"></p>
+        <button class="btn-ghost" id="signOutBtn" style="width:100%;">Sign out</button>
+      </div>
+    </section>
+
+    <section class="panel-section">
+      <label class="field-label" for="baseUrl">Target base URL</label>
+      <input id="baseUrl" class="field-input" type="text" placeholder="https://api.yourapp.com" />
+
+      <label class="field-label" for="bearerToken">Bearer token (primary account)</label>
+      <input id="bearerToken" class="field-input" type="password" placeholder="eyJhbGciOi..." />
+
+      <label class="field-label" for="secondaryToken">Bearer token (secondary account — optional, strengthens BOLA checks)</label>
+      <input id="secondaryToken" class="field-input" type="password" placeholder="optional" />
+    </section>
+
+    <section class="panel-section">
+      <label class="field-label">OpenAPI / Swagger spec</label>
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="specFile" accept=".json,.yaml,.yml" hidden />
+        <span id="dropzoneText">Click to import spec (JSON/YAML)</span>
+      </div>
+      <p class="field-hint" id="endpointCount">No endpoints loaded yet — import a spec or add one manually below.</p>
+      <button class="btn-ghost" id="addManualEndpoint" type="button">+ Add endpoint manually</button>
+    </section>
+
+    <section class="panel-section static-scan-box">
+      <label class="field-label">Static source-code scan (SAST)</label>
+      <p class="field-hint" style="margin-top:0;">Upload a .zip of your source to check for hardcoded secrets and missing security middleware — no running API needed.</p>
+      <div class="dropzone" id="staticDropzone">
+        <input type="file" id="staticZipFile" accept=".zip" hidden />
+        <span id="staticDropzoneText">Click to upload source .zip</span>
+      </div>
+      <p class="field-hint" id="staticScanStatus"></p>
+    </section>
+
+    <section class="panel-section">
+      <label class="field-label">Test modules</label>
+      <div class="dial-list" id="moduleList">
+        <!-- populated by renderer.js -->
+      </div>
+    </section>
+
+    <section class="panel-section consent-box">
+      <label class="consent-row">
+        <input type="checkbox" id="consentCheck" />
+        <span>I own this API, or am explicitly authorized by its owner, to run these security tests against it.</span>
+      </label>
+    </section>
+
+    <button class="btn-primary" id="startScanBtn" type="button">
+      <span class="btn-stamp">▶</span> Run Inspection
+    </button>
+    <p class="field-hint" id="statusLine">Idle.</p>
+  </aside>
+
+  <!-- ============ MAIN : DASHBOARD ============ -->
+  <main class="main">
+
+    <header class="topbar">
+      <div>
+        <h2 id="targetLabel">No target configured</h2>
+        <p class="subtle" id="scanMeta">Configure a target on the left, then run an inspection.</p>
+      </div>
+      <div class="export-row">
+        <a class="link-secondary" id="feedbackLink" href="#" title="Opens in your browser">Report an issue</a>
+        <button class="btn-secondary" id="exportJsonBtn" disabled>Export JSON</button>
+        <button class="btn-secondary" id="exportPdfBtn" disabled>Export PDF</button>
+      </div>
+    </header>
+
+    <section class="instrument-row">
+      <div class="gauge-card">
+        <svg viewBox="0 0 200 120" class="gauge-svg">
+          <path d="M 20 110 A 80 80 0 0 1 180 110" class="gauge-track" />
+          <path d="M 20 110 A 80 80 0 0 1 180 110" class="gauge-fill" id="gaugeFill" />
+          <line x1="100" y1="110" x2="100" y2="40" id="gaugeNeedle" class="gauge-needle" />
+          <circle cx="100" cy="110" r="6" class="gauge-hub" />
+        </svg>
+        <div class="gauge-readout">
+          <span class="gauge-score" id="gaugeScore">--</span>
+          <span class="gauge-grade" id="gaugeGrade">—</span>
+        </div>
+        <p class="gauge-label">Security Score</p>
+      </div>
+
+      <div class="module-progress-card">
+        <p class="card-title">Inspection Sweep</p>
+        <div class="module-checklist" id="moduleChecklist">
+          <!-- populated by renderer.js -->
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <p class="subtle" id="progressMessage">Awaiting scan start.</p>
+      </div>
+
+      <div class="severity-card">
+        <p class="card-title">Findings by Severity</p>
+        <div class="severity-bars" id="severityBars">
+          <!-- populated by renderer.js -->
+        </div>
+      </div>
+    </section>
+
+    <section class="priority-section" id="prioritySection" style="display:none;">
+      <div class="findings-header">
+        <p class="card-title">⚑ Top Priority Fixes</p>
+        <p class="subtle" id="priorityCount"></p>
+      </div>
+      <div class="priority-list" id="priorityList"></div>
+    </section>
+
+    <section class="findings-section">
+      <div class="findings-header">
+        <p class="card-title">Findings Log</p>
+        <div class="filter-row" id="filterRow">
+          <button class="filter-chip active" data-filter="ALL">All</button>
+          <button class="filter-chip" data-filter="CRITICAL">Critical</button>
+          <button class="filter-chip" data-filter="HIGH">High</button>
+          <button class="filter-chip" data-filter="MEDIUM">Medium</button>
+          <button class="filter-chip" data-filter="LOW">Low</button>
+        </div>
+      </div>
+      <div class="findings-list" id="findingsList">
+        <div class="empty-state">
+          <p>No findings yet.</p>
+          <p class="subtle">Findings will appear here, stamped by severity, as each module completes.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- First-run onboarding -->
+<div class="modal-backdrop" id="onboardingBackdrop">
+  <div class="onboarding-card">
+    <div id="onboardingStepContent"></div>
+    <div class="onboarding-dots" id="onboardingDots"></div>
+    <div class="onboarding-actions">
+      <button class="onboarding-skip" id="onboardingSkip" type="button">Skip</button>
+      <button class="btn-primary small" id="onboardingNext" type="button">Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manual endpoint modal -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <h3>Add endpoint manually</h3>
+    <label class="field-label">Path</label>
+    <input class="field-input" id="manualPath" placeholder="/users/{id}" />
+    <label class="field-label">Method</label>
+    <select class="field-input" id="manualMethod">
+      <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
+    </select>
+    <label class="field-label" id="manualParamsLabel">Query parameters (comma-separated, optional)</label>
+    <input class="field-input" id="manualParams" placeholder="q, page, sort" />
+    <label class="field-label" id="manualBodyLabel" style="display:none;">Request body sample (JSON, optional)</label>
+    <textarea class="field-input" id="manualBody" rows="3" style="display:none; font-family:var(--font-mono); resize:vertical;" placeholder='{"email": "user@example.com", "name": "Test User"}'></textarea>
+    <p class="field-hint" id="manualBodyHint" style="display:none;">
+      A realistic sample body unlocks the checks that need one — injection, NoSQL operator, and mass-assignment probes all skip endpoints with no body sample.
+    </p>
+    <label class="consent-row" style="margin-top:8px;">
+      <input type="checkbox" id="manualRequiresAuth" checked />
+      <span>Requires authentication</span>
+    </label>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="manualCancel" type="button">Cancel</button>
+      <button class="btn-primary small" id="manualAdd" type="button">Add</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="auth.js"></script>
+<script src="remediation.js"></script>
+<script src="onboarding.js"></script>
+<script src="renderer.js"></script>
+</body>
+</html>

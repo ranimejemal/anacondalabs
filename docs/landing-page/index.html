@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AegisLab — Automated OWASP API Security Testing</title>
+<meta name="description" content="AegisLab runs automated, OWASP-aligned security checks against your API and source code. Point it at your API, confirm authorization, get a scored report in minutes." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --c-bg: #081320;
+    --c-panel: #0d1f33;
+    --c-panel-raised: #11283f;
+    --c-line: #2c4a6b;
+    --c-line-soft: rgba(99, 148, 199, 0.16);
+    --c-text: #e9eef5;
+    --c-text-soft: #93a8c2;
+    --c-text-faint: #5e7592;
+    --c-brass: #c0394b;
+    --c-brass-bright: #e8576b;
+    --c-brass-soft: rgba(192, 57, 75, 0.16);
+    --c-critical: #dd5263;
+    --c-high: #e2904e;
+    --c-medium: #d3a24c;
+    --c-low: #5da37e;
+    --font-display: "Space Grotesk", "Avenir Next", sans-serif;
+    --font-body: "IBM Plex Sans", -apple-system, sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--c-bg); color: var(--c-text); font-family: var(--font-body);
+    font-size: 16px; line-height: 1.6; position: relative; overflow-x: hidden;
+  }
+  .grid-bg {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(var(--c-line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--c-line-soft) 1px, transparent 1px);
+    background-size: 32px 32px; opacity: 0.4;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  a { color: var(--c-brass-bright); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em; }
+
+  /* ---------- Nav ---------- */
+  nav { display: flex; justify-content: space-between; align-items: center; padding: 22px 0; }
+  .logo { font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: 0.02em; }
+  .logo span { color: var(--c-brass-bright); }
+  .nav-links { display: flex; gap: 28px; font-size: 14px; color: var(--c-text-soft); }
+  .nav-links a { color: var(--c-text-soft); text-decoration: none; }
+  .nav-links a:hover { color: var(--c-text); }
+  .btn-cta {
+    background: var(--c-brass); color: #fff; border: none; padding: 9px 18px; border-radius: 3px;
+    font-family: var(--font-body); font-weight: 600; font-size: 13.5px; text-decoration: none;
+    display: inline-block; transition: background 0.15s ease;
+  }
+  .btn-cta:hover { background: var(--c-brass-bright); }
+
+  /* ---------- Hero ---------- */
+  .hero { padding: 72px 0 96px; display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: center; }
+  .eyebrow {
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em; color: var(--c-text-faint);
+    text-transform: uppercase; margin-bottom: 18px;
+  }
+  .hero h1 { font-size: 44px; line-height: 1.12; margin-bottom: 20px; }
+  .hero p.lede { font-size: 17px; color: var(--c-text-soft); margin-bottom: 30px; max-width: 480px; }
+  .hero-ctas { display: flex; gap: 14px; align-items: center; }
+  .link-secondary { color: var(--c-text-soft); font-size: 14px; text-decoration: none; border-bottom: 1px dotted var(--c-line); }
+
+  /* ---------- Signature element: the inspection stamp ---------- */
+  .stamp-card {
+    background: var(--c-panel); border: 1px solid var(--c-line); border-radius: 6px; padding: 28px;
+    position: relative; overflow: hidden;
+  }
+  .stamp-card::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: linear-gradient(var(--c-line-soft) 1px, transparent 1px), linear-gradient(90deg, var(--c-line-soft) 1px, transparent 1px);
+    background-size: 14px 14px; opacity: 0.5;
+  }
+  .stamp-card-header { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--c-text-faint); position: relative; margin-bottom: 18px; }
+  .stamp-row { display: flex; align-items: center; justify-content: center; padding: 18px 0 6px; position: relative; }
+  .grade-stamp {
+    font-family: var(--font-display); font-weight: 700; font-size: 96px; color: var(--c-critical);
+    border: 6px solid var(--c-critical); border-radius: 12px; padding: 0 26px; line-height: 1;
+    transform: rotate(-8deg) scale(1); opacity: 1;
+    animation: stampImpact 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+    animation-delay: 0.3s;
+    text-shadow: 0 0 18px rgba(221, 82, 99, 0.35);
+  }
+  @keyframes stampImpact {
+    0%   { transform: rotate(-8deg) scale(2.4); opacity: 0; }
+    60%  { transform: rotate(-8deg) scale(0.94); opacity: 1; }
+    100% { transform: rotate(-8deg) scale(1); opacity: 1; }
+  }
+  .stamp-meta { position: relative; margin-top: 14px; font-family: var(--font-mono); font-size: 12px; color: var(--c-text-faint); text-align: center; }
+  .stamp-findings { position: relative; margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+  .sf-row { display: flex; justify-content: space-between; font-size: 13px; padding: 7px 10px; background: var(--c-panel-raised); border-radius: 3px; border-left: 2px solid var(--sev-color, var(--c-line)); }
+  .sf-row .tag { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--sev-color, var(--c-text-faint)); }
+  @media (prefers-reduced-motion: reduce) { .grade-stamp { animation: none; transform: rotate(-8deg) scale(1); } }
+
+  /* ---------- Sections ---------- */
+  section { padding: 64px 0; border-top: 1px solid var(--c-line-soft); }
+  .section-eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; color: var(--c-brass-bright); text-transform: uppercase; margin-bottom: 10px; }
+  section h2 { font-size: 30px; margin-bottom: 14px; }
+  section > p.section-lede { color: var(--c-text-soft); max-width: 560px; margin-bottom: 40px; font-size: 15.5px; }
+
+  /* How it works — numbering justified: this is a real sequential process */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .step { background: var(--c-panel); border: 1px solid var(--c-line); border-radius: 6px; padding: 24px; }
+  .step-num { font-family: var(--font-mono); font-size: 12px; color: var(--c-brass-bright); margin-bottom: 12px; }
+  .step h3 { font-size: 16px; margin-bottom: 8px; }
+  .step p { color: var(--c-text-soft); font-size: 14px; }
+
+  /* Coverage table */
+  .coverage-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .coverage-table th { text-align: left; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; color: var(--c-text-faint); text-transform: uppercase; padding: 10px 12px; border-bottom: 1px solid var(--c-line); }
+  .coverage-table td { padding: 12px; border-bottom: 1px solid var(--c-line-soft); color: var(--c-text-soft); }
+  .coverage-table tr:last-child td { border-bottom: none; }
+  .covered-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c-low); margin-right: 8px; }
+
+  /* Pricing */
+  .pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .price-card { background: var(--c-panel); border: 1px solid var(--c-line); border-radius: 6px; padding: 30px; }
+  .price-card.premium { border-color: var(--c-brass); box-shadow: 0 0 0 1px var(--c-brass-soft); }
+  .price-card h3 { font-size: 18px; margin-bottom: 4px; }
+  .price-amount { font-family: var(--font-display); font-size: 32px; margin: 12px 0 18px; }
+  .price-amount span { font-size: 14px; color: var(--c-text-faint); font-family: var(--font-body); }
+  .price-card ul { list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 14px; color: var(--c-text-soft); }
+  .price-card li::before { content: "—"; color: var(--c-text-faint); margin-right: 8px; }
+
+  footer { padding: 40px 0 60px; text-align: center; color: var(--c-text-faint); font-size: 13px; }
+  footer a { color: var(--c-text-faint); }
+
+  @media (max-width: 780px) {
+    .hero { grid-template-columns: 1fr; padding-top: 48px; }
+    .hero h1 { font-size: 32px; }
+    .steps, .pricing { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+
+<div class="wrap">
+  <nav>
+    <div class="logo">AEGIS<span>LAB</span></div>
+    <div class="nav-links">
+      <a href="#how-it-works">How it works</a>
+      <a href="#coverage">Coverage</a>
+      <a href="#pricing">Pricing</a>
+      <a href="https://github.com/REPLACE_WITH_YOUR_REPO">GitHub</a>
+    </div>
+    <a class="btn-cta" href="#download">Download</a>
+  </nav>
+</div>
+
+<div class="wrap hero">
+  <div>
+    <div class="eyebrow">// desktop app · OWASP API Security Top 10</div>
+    <h1>Your API's inspection report, generated in minutes — not a pentest engagement.</h1>
+    <p class="lede">AegisLab points a battery of non-destructive, OWASP-aligned checks at an API you're authorized to test — live endpoints or a source .zip — and hands back a scored, explained findings report. No account required to start.</p>
+    <div class="hero-ctas">
+      <a class="btn-cta" href="#download" id="download">Download for macOS / Windows / Linux</a>
+      <a class="link-secondary" href="#how-it-works">See how it works ↓</a>
+    </div>
+  </div>
+
+  <div class="stamp-card">
+    <div class="stamp-card-header"><span>SCAN #A17-9F2</span><span>127.0.0.1:9000</span></div>
+    <div class="stamp-row"><div class="grade-stamp">F</div></div>
+    <p class="stamp-meta">SECURITY SCORE 0/100 — 18 FINDINGS</p>
+    <div class="stamp-findings">
+      <div class="sf-row" style="--sev-color:var(--c-critical)"><span>Broken Object Level Authorization</span><span class="tag">CRITICAL</span></div>
+      <div class="sf-row" style="--sev-color:var(--c-high)"><span>Missing rate limiting on /auth/login</span><span class="tag">HIGH</span></div>
+      <div class="sf-row" style="--sev-color:var(--c-medium)"><span>Wildcard CORS with credentials</span><span class="tag">MEDIUM</span></div>
+    </div>
+  </div>
+</div>
+
+<section id="how-it-works">
+  <div class="wrap">
+    <div class="section-eyebrow">Process</div>
+    <h2>Three steps, no infrastructure to stand up</h2>
+    <p class="section-lede">Runs entirely on your own machine. Nothing about your API or your code is sent anywhere unless you explicitly turn on AI-powered fixes.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01 — TARGET</div>
+        <h3>Point it at your API</h3>
+        <p>Import an OpenAPI/Swagger spec, add endpoints manually, or upload a source code .zip for a static scan with no running API needed at all.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">02 — CONFIRM</div>
+        <h3>Confirm authorization</h3>
+        <p>A required consent checkbox before any live scan runs — AegisLab is built for testing systems you own or are explicitly authorized to test, full stop.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">03 — REVIEW</div>
+        <h3>Get a scored, explained report</h3>
+        <p>A 0–100 security score, every finding mapped to its OWASP category with plain-language impact and fix guidance, exportable as JSON or PDF.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="coverage">
+  <div class="wrap">
+    <div class="section-eyebrow">Coverage</div>
+    <h2>7 of 10 OWASP API Security Top 10 categories</h2>
+    <p class="section-lede">The three not covered — sensitive business flow abuse, inventory management, and third-party API trust — are structural problems that don't reduce to a single automated HTTP probe. We'd rather say so than fake coverage.</p>
+    <table class="coverage-table">
+      <tr><th>Category</th><th>What it catches</th></tr>
+      <tr><td><span class="covered-dot"></span>API1 — Broken Object Level Authorization</td><td>Cross-account/cross-object access without permission</td></tr>
+      <tr><td><span class="covered-dot"></span>API2 — Broken Authentication</td><td>Weak session handling, credential stuffing exposure</td></tr>
+      <tr><td><span class="covered-dot"></span>API3 — Broken Object Property Level Auth</td><td>Sensitive field leakage, mass assignment</td></tr>
+      <tr><td><span class="covered-dot"></span>API4 — Unrestricted Resource Consumption</td><td>Missing rate limiting</td></tr>
+      <tr><td><span class="covered-dot"></span>API5 — Broken Function Level Authorization</td><td>Admin routes reachable without admin role</td></tr>
+      <tr><td><span class="covered-dot"></span>API7 — Server Side Request Forgery</td><td>Cloud metadata exposure via URL-shaped parameters</td></tr>
+      <tr><td><span class="covered-dot"></span>API8 — Security Misconfiguration</td><td>Transport security, CORS, fingerprinting headers</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <div class="section-eyebrow">Pricing</div>
+    <h2>Free to scan. Pay for AI to fix it.</h2>
+    <p class="section-lede">Scanning — live API or static source — is free forever, no account needed. An account only unlocks AI-powered remediation.</p>
+    <div class="pricing">
+      <div class="price-card">
+        <h3>Free</h3>
+        <div class="price-amount">$0</div>
+        <ul>
+          <li>Unlimited scans, live API or static source</li>
+          <li>Full OWASP-mapped findings + security score</li>
+          <li>JSON / PDF report export</li>
+          <li>AI fix suggestions as copy/paste text (40/day, sign-in required)</li>
+        </ul>
+      </div>
+      <div class="price-card premium">
+        <h3>Premium</h3>
+        <div class="price-amount">$/mo <span>— set your price in Stripe</span></div>
+        <ul>
+          <li>Everything in Free</li>
+          <li>One-click AI auto-apply on uploaded source (15/day)</li>
+          <li>Priority AI suggestion quota</li>
+          <li>Cancel anytime from the in-app billing portal</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>AegisLab is provided for testing systems you own or are authorized to test. See the <a href="../legal/TERMS_OF_USE.md">Terms of Use</a> and <a href="../legal/PRIVACY_POLICY.md">Privacy Policy</a>.</p>
+    <p style="margin-top:8px;">© <span id="year"></span> AegisLab.</p>
+  </div>
+</footer>
+
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+</script>
+</body>
+</html>

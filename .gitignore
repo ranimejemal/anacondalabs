@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Node / Electron
+node_modules/
+dist/
+out/
+
+# Reports & generated data
+reports_output/*.json
+reports_output/*.pdf
+!reports_output/.gitkeep
+
+# App logs (Sprint 5 crash/error logging)
+logs/*.log*
+!logs/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/

@@ -1,0 +1,361 @@
+{
+  "scan_id": "a757042e-8689-4248-a11d-d33c4d9e6f7e",
+  "base_url": "http://127.0.0.1:9000",
+  "started_at": 1784103256.6371906,
+  "finished_at": 1784103273.5442739,
+  "status": "completed",
+  "security_score": 0,
+  "grade": "F",
+  "score_breakdown": {
+    "API2:2023 Broken Authentication": {
+      "finding_count": 7,
+      "deduction": 43.7,
+      "severity_counts": {
+        "CRITICAL": 3,
+        "HIGH": 3,
+        "MEDIUM": 1
+      }
+    },
+    "API1:2023 Broken Object Level Authorization": {
+      "finding_count": 1,
+      "deduction": 10.0,
+      "severity_counts": {
+        "HIGH": 1
+      }
+    },
+    "A03:2021 Injection": {
+      "finding_count": 1,
+      "deduction": 10.0,
+      "severity_counts": {
+        "HIGH": 1
+      }
+    },
+    "API4:2023 Unrestricted Resource Consumption": {
+      "finding_count": 1,
+      "deduction": 10.0,
+      "severity_counts": {
+        "HIGH": 1
+      }
+    },
+    "API3:2023 Broken Object Property Level Authorization": {
+      "finding_count": 3,
+      "deduction": 27.8,
+      "severity_counts": {
+        "CRITICAL": 1,
+        "HIGH": 1,
+        "MEDIUM": 1
+      }
+    },
+    "API8:2023 Security Misconfiguration": {
+      "finding_count": 2,
+      "deduction": 21.2,
+      "severity_counts": {
+        "CRITICAL": 1,
+        "LOW": 1
+      }
+    },
+    "A02:2021 Cryptographic Failures": {
+      "finding_count": 1,
+      "deduction": 20.0,
+      "severity_counts": {
+        "CRITICAL": 1
+      }
+    },
+    "API7:2023 Server Side Request Forgery": {
+      "finding_count": 1,
+      "deduction": 20.0,
+      "severity_counts": {
+        "CRITICAL": 1
+      }
+    },
+    "_summary": {
+      "total_findings": 17,
+      "grade": "F",
+      "severity_totals": {
+        "CRITICAL": 7,
+        "HIGH": 7,
+        "MEDIUM": 2,
+        "LOW": 1
+      }
+    }
+  },
+  "endpoints_tested": 8,
+  "modules_run": [
+    "auth_tests",
+    "authorization_tests",
+    "injection_tests",
+    "rate_limit_tests",
+    "data_exposure_tests",
+    "transport_security_tests",
+    "mass_assignment_tests",
+    "ssrf_tests"
+  ],
+  "vulnerabilities": [
+    {
+      "endpoint": "/users/{id}",
+      "method": "GET",
+      "issue": "Protected endpoint accessible without authentication",
+      "severity": "CRITICAL",
+      "description": "The endpoint GET /users/{id} is expected to require authentication (per the imported spec) but returned HTTP 200 with no Authorization header supplied.",
+      "impact": "Unauthenticated users may read or modify data that should be restricted to logged-in users.",
+      "recommendation": "Enforce an authentication guard/middleware on this route and verify it runs before any business logic. Add an automated test that asserts 401 on missing credentials.",
+      "owasp_category": "API2:2023 Broken Authentication",
+      "test_module": "auth_tests",
+      "evidence": {
+        "status_code": 200,
+        "request": "no Authorization header"
+      }
+    },
+    {
+      "endpoint": "/users/{id}",
+      "method": "GET",
+      "issue": "Endpoint accepts a malformed/invalid bearer token",
+      "severity": "HIGH",
+      "description": "Sending a syntactically invalid bearer token to /users/{id} returned HTTP 200 instead of a 401 Unauthorized.",
+      "impact": "Indicates token validation may be missing, fail-open, or only checked on some code paths.",
+      "recommendation": "Verify JWT/opaque token validation runs on every request and fails closed on any parse/verify error.",
+      "owasp_category": "API2:2023 Broken Authentication",
+      "test_module": "auth_tests",
+      "evidence": {
+        "status_code": 200,
+        "token_sample": "this.is.not.a.valid."
+      }
+    },
+    {
+      "endpoint": "/users",
+      "method": "POST",
+      "issue": "Protected endpoint accessible without authentication",
+      "severity": "CRITICAL",
+      "description": "The endpoint POST /users is expected to require authentication (per the imported spec) but returned HTTP 200 with no Authorization header supplied.",
+      "impact": "Unauthenticated users may read or modify data that should be restricted to logged-in users.",
+      "recommendation": "Enforce an authentication guard/middleware on this route and verify it runs before any business logic. Add an automated test that asserts 401 on missing credentials.",
+      "owasp_category": "API2:2023 Broken Authentication",
+      "test_module": "auth_tests",
+      "evidence": {
+        "status_code": 200,
+        "request": "no Authorization header"
+      }
+    },
+    {
+      "endpoint": "/users",
+      "method": "POST",
+      "issue": "Endpoint accepts a malformed/invalid bearer token",
+      "severity": "HIGH",
+      "description": "Sending a syntactically invalid bearer token to /users returned HTTP 200 instead of a 401 Unauthorized.",
+      "impact": "Indicates token validation may be missing, fail-open, or only checked on some code paths.",
+      "recommendation": "Verify JWT/opaque token validation runs on every request and fails closed on any parse/verify error.",
+      "owasp_category": "API2:2023 Broken Authentication",
+      "test_module": "auth_tests",
+      "evidence": {
+        "status_code": 200,
+        "token_sample": "this.is.not.a.valid."
+      }
+    },
+    {
+      "endpoint": "/fetch-avatar",
+      "method": "POST",
+      "issue": "Protected endpoint accessible without authentication",
+      "severity": "CRITICAL",
+      "description": "The endpoint POST /fetch-avatar is expected to require authentication (per the imported spec) but returned HTTP 200 with no Authorization header supplied.",
+      "impact": "Unauthenticated users may read or modify data that should be restricted to logged-in users.",
+      "recommendation": "Enforce an authentication guard/middleware on this route and verify it runs before any business logic. Add an automated test that asserts 401 on missing credentials.",
+      "owasp_category": "API2:2023 Broken Authentication",
+      "test_module": "auth_tests",
+      "evidence": {
+        "status_code": 200,
+        "request": "no Authorization header"
+      }
+    },
+    {
+      "endpoint": "/fetch-avatar",
+      "method": "POST",
+      "issue": "Endpoint accepts a malformed/invalid bearer token",
+      "severity": "HIGH",
+      "description": "Sending a syntactically invalid bearer token to /fetch-avatar returned HTTP 200 instead of a 401 Unauthorized.",
+      "impact": "Indicates token validation may be missing, fail-open, or only checked on some code paths.",
+      "recommendation": "Verify JWT/opaque token validation runs on every request and fails closed on any parse/verify error.",
+      "owasp_category": "API2:2023 Broken Authentication",
+      "test_module": "auth_tests",
+      "evidence": {
+        "status_code": 200,
+        "token_sample": "this.is.not.a.valid."
+      }
+    },
+    {
+      "endpoint": "/auth/login",
+      "method": "POST",
+      "issue": "Login error messages leak account existence",
+      "severity": "MEDIUM",
+      "description": "The login endpoint returns distinguishable responses for 'unknown account' vs 'wrong password', allowing account enumeration.",
+      "impact": "Attackers can build a list of valid/registered email addresses for targeted phishing or credential stuffing.",
+      "recommendation": "Return an identical generic message (e.g. 'Invalid email or password') and identical status code/timing for both cases.",
+      "owasp_category": "API2:2023 Broken Authentication",
+      "test_module": "auth_tests",
+      "evidence": {
+        "status_unknown_user": 404,
+        "status_wrong_password": 401
+      }
+    },
+    {
+      "endpoint": "/users/{id}",
+      "method": "GET",
+      "issue": "Possible missing object-ownership check (IDOR/BOLA)",
+      "severity": "HIGH",
+      "description": "Requesting /users/{id} with different ID values (1, 2) using the SAME token returned HTTP 200 with distinct payloads for each, with no apparent ownership/ACL check rejecting access to records the caller may not own.",
+      "impact": "A user may be able to read other users' records simply by incrementing an ID, exposing private data.",
+      "recommendation": "Add an explicit ownership/ACL check in the handler (e.g. WHERE owner_id = :current_user) rather than relying on the ID being 'hard to guess'. Return 403/404 for records the caller doesn't own.",
+      "owasp_category": "API1:2023 Broken Object Level Authorization",
+      "test_module": "authorization_tests",
+      "evidence": {
+        "ids_tested": [
+          "1",
+          "2"
+        ],
+        "statuses": {
+          "1": 200,
+          "2": 200
+        }
+      }
+    },
+    {
+      "endpoint": "/users",
+      "method": "POST",
+      "issue": "Possible NoSQL operator injection via body field 'email'",
+      "severity": "HIGH",
+      "description": "Replacing the value of 'email' with a MongoDB query operator ({'$ne': None}) was accepted (HTTP 200) instead of being rejected as an invalid string value.",
+      "impact": "If the field reaches a NoSQL query unsanitized, an attacker could bypass auth checks or filters (e.g. login bypass via $ne).",
+      "recommendation": "Validate and coerce input types strictly (reject objects where a string/number is expected) before passing to the database driver.",
+      "owasp_category": "A03:2021 Injection",
+      "test_module": "injection_tests",
+      "evidence": {
+        "field": "email",
+        "probe": "{'$ne': None}",
+        "status": 200
+      }
+    },
+    {
+      "endpoint": "/auth/login",
+      "method": "POST",
+      "issue": "No rate limiting detected on sensitive endpoint",
+      "severity": "HIGH",
+      "description": "20 consecutive requests to POST /auth/login all succeeded without ever receiving an HTTP 429 (Too Many Requests) response.",
+      "impact": "Without rate limiting, this endpoint is exposed to credential stuffing, brute-force, OTP-guessing, or resource-exhaustion attacks.",
+      "recommendation": "Add per-IP and per-account rate limiting (e.g. token-bucket or sliding-window) on this route, returning 429 with a Retry-After header once the limit is exceeded.",
+      "owasp_category": "API4:2023 Unrestricted Resource Consumption",
+      "test_module": "rate_limit_tests",
+      "evidence": {
+        "requests_sent": 20,
+        "rate_limit_headers_seen": false
+      }
+    },
+    {
+      "endpoint": "/users/{id}",
+      "method": "GET",
+      "issue": "Response body includes sensitive/credential-like fields",
+      "severity": "HIGH",
+      "description": "The response from /users/{id} includes one or more fields that look like secrets or credentials: password_hash.",
+      "impact": "Sensitive fields such as password hashes or tokens should never be serialized to API clients; exposure can lead to account takeover if leaked further (logs, browser devtools, caches).",
+      "recommendation": "Use an explicit response DTO/serializer that allow-lists exposed fields, rather than returning the raw database model.",
+      "owasp_category": "API3:2023 Broken Object Property Level Authorization",
+      "test_module": "data_exposure_tests",
+      "evidence": {
+        "fields_found": [
+          "password_hash"
+        ]
+      }
+    },
+    {
+      "endpoint": "/users/{id}",
+      "method": "GET",
+      "issue": "Response appears to expose internal/implementation fields (excessive data exposure)",
+      "severity": "MEDIUM",
+      "description": "The response includes internal-looking fields not typically meant for API consumers: __v, password_hash.",
+      "impact": "Returning raw database rows leaks schema/implementation details and may include fields with no intended external use, increasing attack surface for object-property-level attacks.",
+      "recommendation": "Map database models to dedicated response DTOs and explicitly select only the fields the API contract requires.",
+      "owasp_category": "API3:2023 Broken Object Property Level Authorization",
+      "test_module": "data_exposure_tests",
+      "evidence": {
+        "fields_found": [
+          "__v",
+          "password_hash"
+        ]
+      }
+    },
+    {
+      "endpoint": "/users/{id}",
+      "method": "GET",
+      "issue": "X-Powered-By header reveals backend framework",
+      "severity": "LOW",
+      "description": "The response includes an X-Powered-By header value of 'Express/4.17.1'.",
+      "impact": "Knowing the exact framework/version helps attackers select known exploits faster.",
+      "recommendation": "Disable the X-Powered-By header (e.g. app.disable('x-powered-by') in Express, or equivalent middleware config).",
+      "owasp_category": "API8:2023 Security Misconfiguration",
+      "test_module": "data_exposure_tests",
+      "evidence": {
+        "header_value": "Express/4.17.1"
+      }
+    },
+    {
+      "endpoint": "/users/{id}",
+      "method": "GET",
+      "issue": "Dangerous CORS configuration: wildcard origin with credentials allowed",
+      "severity": "CRITICAL",
+      "description": "The API returns Access-Control-Allow-Origin: * together with Access-Control-Allow-Credentials: true.",
+      "impact": "Most browsers will reject this combination, but where supported it lets ANY website read authenticated responses on behalf of a logged-in victim, leading to full account compromise via CSRF-style requests.",
+      "recommendation": "Echo back a specific allow-listed origin (never '*') whenever Allow-Credentials is true.",
+      "owasp_category": "API8:2023 Security Misconfiguration",
+      "test_module": "data_exposure_tests",
+      "evidence": {
+        "access_control_allow_origin": "*",
+        "access_control_allow_credentials": "true"
+      }
+    },
+    {
+      "endpoint": "(base URL)",
+      "method": "N/A",
+      "issue": "API base URL uses unencrypted HTTP",
+      "severity": "CRITICAL",
+      "description": "The configured base URL (http://127.0.0.1:9000) uses http:// rather than https://.",
+      "impact": "All traffic \u2014 including bearer tokens and request/response bodies \u2014 travels in plaintext and can be intercepted or modified in transit.",
+      "recommendation": "Serve the API exclusively over HTTPS/TLS 1.2+ and redirect all HTTP traffic to HTTPS.",
+      "owasp_category": "A02:2021 Cryptographic Failures",
+      "test_module": "transport_security_tests",
+      "evidence": {
+        "base_url": "http://127.0.0.1:9000"
+      }
+    },
+    {
+      "endpoint": "/users",
+      "method": "POST",
+      "issue": "Mass assignment: unexpected field 'role' accepted and reflected",
+      "severity": "CRITICAL",
+      "description": "Sending an undocumented 'role' field (value: 'admin') alongside the normal request body was accepted (HTTP 200), and the response echoed it back \u2014 meaning the server stored or applied a field the client should never have been able to set directly.",
+      "impact": "A real attacker could set this field to escalate privileges (role/isAdmin), manipulate pricing or balances, or flip verification/premium flags \u2014 entirely through a normal-looking write request, without any other vulnerability needed.",
+      "recommendation": "Use an explicit allowlist (DTO / whitelist pattern) for writable fields instead of binding the raw request body to your model. Server-controlled fields (role, price, verified status, etc.) must never be settable from client input at all.",
+      "owasp_category": "API3:2023 Broken Object Property Level Authorization",
+      "test_module": "mass_assignment_tests",
+      "evidence": {
+        "field": "role",
+        "sent_value": "admin",
+        "status": 200
+      }
+    },
+    {
+      "endpoint": "/fetch-avatar",
+      "method": "POST",
+      "issue": "Server-side request forgery via 'avatar_url' \u2014 cloud metadata reachable",
+      "severity": "CRITICAL",
+      "description": "Pointing the 'avatar_url' body parameter at the cloud instance metadata address (169.254.169.254) caused the response to include metadata-service content (ami-id) \u2014 the server fetched an attacker-supplied URL itself.",
+      "impact": "If this API runs on AWS/GCP/Azure, an attacker can use this to steal the instance's IAM credentials from the metadata service, potentially compromising far more than just this API (full cloud account access depending on the role's permissions).",
+      "recommendation": "Never fetch a raw user-supplied URL server-side. Use an allowlist of permitted hosts/schemes, resolve and reject requests to link-local/private IP ranges (169.254.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8) before connecting, and disable HTTP redirects when following user-supplied URLs.",
+      "owasp_category": "API7:2023 Server Side Request Forgery",
+      "test_module": "ssrf_tests",
+      "evidence": {
+        "field": "avatar_url",
+        "param_kind": "body",
+        "signature_found": "ami-id"
+      }
+    }
+  ],
+  "generated_by": "AegisLab Security Engine"
+}

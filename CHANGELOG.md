@@ -1,0 +1,90 @@
+# Changelog
+
+## [Unreleased] — pending: Stripe live-account testing, code signing, beta feedback
+
+## v1.3.0 (this session's starting point)
+- Core scanning engine: 6 OWASP-mapped dynamic test modules (auth,
+  authorization, injection, rate limiting, data exposure, transport
+  security) plus a separate static source-code scanner.
+- AI-powered fix suggestions (Anthropic) with free-tier text suggestions
+  and premium auto-apply, gated behind Supabase auth.
+
+## Sprint 1 — Stabilize the core
+- Fixed: `main.js` treated any backend stderr output as "started
+  successfully," so a crashed backend (e.g. missing dependency) looked
+  identical to a healthy one. Now polls `/api/health` and only proceeds on
+  a real response, with per-attempt logging to `backend.log`.
+- Fixed: the packaged Electron app never actually shipped the `backend/`
+  directory at all (package.json's packaging root didn't include it).
+  Added `extraResources` + packaging-aware path resolution.
+- `scripts/start_app.sh` / `.bat` rewritten: no longer requires conda
+  pre-installed — auto-creates a local `.venv`, installs dependencies, and
+  installs Electron's `node_modules` on first run.
+
+## Sprint 2 — Harden the AI + Supabase layer
+- Applied the `profiles` table schema to the live Supabase project (it had
+  been documented in a docstring but never actually applied).
+- Added per-user daily rate limits on both AI endpoints.
+- Added specific, distinct error handling for timeouts, network failures,
+  invalid API keys, and upstream rate limits (both Anthropic and Supabase
+  sides) instead of generic 500s.
+- Security review: confirmed the service_role key never leaves the
+  backend, premium status is always re-verified live against Supabase
+  (never cached/trusted from the client), and premium checks fail closed.
+- 25 pytest tests covering all of the above.
+
+## Sprint 3 — Stripe billing
+- Checkout session creation, customer portal, and webhook handling — all
+  via raw `httpx` calls (no SDK), matching the existing Anthropic/Supabase
+  pattern in the codebase.
+- Checkout happens in the system browser (`shell.openExternal`), never
+  embedded in the Electron window, to keep PCI scope minimal.
+- Webhook is the only path that ever sets `is_premium`; grace-period
+  policy means only `customer.subscription.deleted` revokes access, not a
+  payment failure or a pending cancellation.
+- Real HMAC webhook signature verification, implemented by hand.
+- 13 additional pytest tests (38 total).
+
+## Sprint 4 — Mass Assignment + SSRF modules
+- `mass_assignment_tests.py`: probes write endpoints with undocumented
+  privileged fields (role, isAdmin, price, etc.), only flags on confirmed
+  reflection in the response.
+- `ssrf_tests.py`: cloud-metadata probe (self-contained, no external
+  infra needed) plus an optional out-of-band callback check.
+- Both proven against a live instance of `examples/mock_vulnerable_api.py`,
+  not just unit-tested in isolation.
+- Fixed: the two new modules were unreachable from the desktop UI — the
+  module checklist array in `renderer.js` hadn't been updated, so nothing
+  sent from the app could ever enable them regardless of backend support.
+- 43 pytest tests total.
+
+## Sprint 5 — Polish, docs, and trust signals
+- Fixed two leftover amber-theme colors that didn't match the rest of the
+  brass/red UI.
+- Fixed: the manual-add-endpoint dialog had no way to enter a request body
+  or query parameters, silently disabling every body/param-based check for
+  any endpoint added that way.
+- README brought current (setup instructions, module table, OWASP
+  coverage summary, Stripe section).
+- Privacy Policy and Terms of Use drafted (explicitly flagged as drafts
+  needing real legal review, not final documents).
+- 4-step first-run onboarding walkthrough.
+- Crash/error logging added on all three layers: backend (rotating file
+  handler + global exception handler), Electron main process
+  (`uncaughtException`/`render-process-gone`), and renderer
+  (`window.onerror`/`unhandledrejection`), all writing to a shared log.
+
+## Sprint 6 — Launch prep
+- `electron-updater` wired to GitHub Releases, verified survives
+  packaging.
+- Landing page built extending the app's own "inspection blueprint"
+  visual identity.
+- "Report an issue" link added to the app, pointing at GitHub Issues.
+- Code signing process documented as a runbook (`docs/CODE_SIGNING.md`) —
+  actual signing needs real certificates, not something automatable here.
+- Regenerated `examples/sample_scan_report.json`/`.pdf` via a real scan
+  run, reflecting all 8 modules (previous sample predated Sprint 4).
+- Fixed two real Supabase security/performance lint findings on the live
+  project: an unpinned `search_path` on a `SECURITY DEFINER` function
+  (privilege-escalation vector) and a publicly-callable trigger function
+  that should only run via the trigger, not as a direct RPC endpoint.

@@ -1,0 +1,40 @@
+{
+  "name": "aegislab",
+  "version": "1.0.0",
+  "description": "AegisLab — automated OWASP-based API security testing desktop app",
+  "main": "main.js",
+  "author": "AegisLab",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "release": "electron-builder --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.4"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.aegislab.app",
+    "productName": "AegisLab",
+    "files": ["**/*", "!**/node_modules/electron-builder/**"],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": ["**/*", "!**/__pycache__/**", "!**/.env"]
+      }
+    ],
+    "win": { "target": "nsis" },
+    "mac": { "target": "dmg", "category": "public.app-category.developer-tools" },
+    "linux": { "target": "AppImage" },
+    "publish": {
+      "provider": "github",
+      "owner": "REPLACE_WITH_YOUR_GITHUB_ORG_OR_USERNAME",
+      "repo": "REPLACE_WITH_YOUR_REPO_NAME"
+    }
+  }
+}

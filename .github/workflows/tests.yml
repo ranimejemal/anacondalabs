@@ -1,0 +1,44 @@
+name: Backend tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r backend/requirements-dev.txt
+
+      - name: Run test suite
+        run: |
+          cd backend
+          python -m pytest -v
+
+      # Sanity-checks the packaging path doesn't silently break (e.g. the
+      # backend/ directory failing to ship — see Sprint 1's postmortem on
+      # exactly this bug) without needing a full platform build matrix.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify Electron packaging includes the backend
+        run: |
+          cd frontend
+          npm install
+          npx electron-builder --linux --dir
+          test -f dist/linux-unpacked/resources/backend/main.py || (echo "backend/ missing from packaged app!" && exit 1)
