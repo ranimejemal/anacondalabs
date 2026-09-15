@@ -19,6 +19,10 @@ reports_output/*.pdf
 logs/*.log*
 !logs/.gitkeep
 
+# Secrets — real values belong only in a local, untracked backend/.env
+# (see backend/.env.example for the template). Never commit this file.
+backend/.env
+
 # OS
 .DS_Store
 Thumbs.db
