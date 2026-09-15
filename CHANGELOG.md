@@ -2,6 +2,20 @@
 
 ## [Unreleased] — pending: Stripe live-account testing, code signing, beta feedback
 
+## Sprint 5 — Inventory Management module (API9:2023)
+- `inventory_tests.py`: new 9th scan module. Detects (1) live-but-undeclared
+  sibling API versions next to each declared versioned path (e.g. `/v1/`
+  still reachable when the spec only declares `/v2/`) and (2) reachable,
+  undeclared documentation/introspection endpoints (`/swagger.json`,
+  `/actuator/env`, `/actuator/beans`, open GraphQL introspection, etc.).
+- Registered in `MODULE_REGISTRY`, added to `ScanConfig`'s default enabled
+  modules, and wired into the frontend module checklist.
+- README updated: coverage table, module count, and the API9 scoping
+  rationale (previously listed as fully out-of-scope for v1).
+- 4 new integration tests against a purpose-built mock app (kept separate
+  from `examples/mock_vulnerable_api.py` so its documented, reproducible
+  report numbers stay untouched); 50 pytest tests total, all passing.
+
 ## v1.3.0 (this session's starting point)
 - Core scanning engine: 6 OWASP-mapped dynamic test modules (auth,
   authorization, injection, rate limiting, data exposure, transport

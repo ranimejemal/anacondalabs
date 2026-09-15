@@ -8,6 +8,7 @@ from .data_exposure_tests import DataExposureTests
 from .transport_security_tests import TransportSecurityTests
 from .mass_assignment_tests import MassAssignmentTests
 from .ssrf_tests import SsrfTests
+from .inventory_tests import InventoryTests
 
 MODULE_REGISTRY = {
     "auth_tests": AuthTests,
@@ -18,11 +19,12 @@ MODULE_REGISTRY = {
     "transport_security_tests": TransportSecurityTests,
     "mass_assignment_tests": MassAssignmentTests,
     "ssrf_tests": SsrfTests,
+    "inventory_tests": InventoryTests,
 }
 
 __all__ = [
     "AuthTests", "AuthorizationTests", "InjectionTests",
     "RateLimitTests", "DataExposureTests", "TransportSecurityTests",
-    "MassAssignmentTests", "SsrfTests",
+    "MassAssignmentTests", "SsrfTests", "InventoryTests",
     "MODULE_REGISTRY",
 ]

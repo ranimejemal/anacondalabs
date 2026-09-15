@@ -59,7 +59,7 @@ AegisLab/
 │   │   ├── express_checks.py
 │   │   ├── nestjs_checks.py
 │   │   └── runner.py            # Orchestrates a full static scan
-│   └── tests/                   # The 8 OWASP-mapped DYNAMIC test modules
+│   └── tests/                   # The 9 OWASP-mapped DYNAMIC test modules
 │       ├── base.py
 │       ├── auth_tests.py
 │       ├── authorization_tests.py
@@ -68,7 +68,8 @@ AegisLab/
 │       ├── data_exposure_tests.py
 │       ├── transport_security_tests.py
 │       ├── mass_assignment_tests.py
-│       └── ssrf_tests.py
+│       ├── ssrf_tests.py
+│       └── inventory_tests.py
 ├── frontend/                     # Electron desktop app
 │   ├── main.js                   # Electron main process (spawns backend)
 │   ├── preload.js
@@ -146,7 +147,7 @@ sign-in, and Stripe billing are optional add-ons — see [§7](#7-optional-ai-si
 
 1. **Configure the target** — enter the API's base URL and a Bearer token for a test account. Optionally add a *second* account's token: this dramatically strengthens the BOLA/IDOR checks (AegisLab can confirm, not just suspect, that one account can read another's data).
 2. **Import endpoints** — drag in an OpenAPI/Swagger JSON or YAML file, or add endpoints manually for APIs without a spec.
-3. **Pick test modules** — all six are on by default; toggle any off from the instrument panel.
+3. **Pick test modules** — all nine are on by default; toggle any off from the instrument panel.
 4. **Tick the authorization checkbox** and click **Run Inspection**.
 5. Watch the **real-time sweep**: each module lights up as it runs, with progress and a live finding count.
 6. **Review the Top Priority Fixes panel** — the 5 highest-severity findings, ranked, each with a ready-to-paste code snippet where one is known (e.g. the exact `helmet()`/`express-rate-limit`/parameterized-query fix for that specific issue), with a one-click "Copy code" button. Findings without a known snippet still rank in the list with their written recommendation.
@@ -169,11 +170,13 @@ sign-in, and Stripe billing are optional add-ons — see [§7](#7-optional-ai-si
 | `transport_security_tests.py` | A02:2021 Cryptographic Failures, API8:2023 Security Misconfiguration | HTTP vs HTTPS, HSTS, security headers, cookie flags, legacy TLS version detection |
 | `mass_assignment_tests.py` | API3:2023 Broken Object Property Level Authorization | Injects an undocumented privileged field (`role`, `isAdmin`, `price`, etc.) into write requests; flags only when the response confirms it was accepted and reflected back |
 | `ssrf_tests.py` | API7:2023 Server Side Request Forgery | Points URL/callback-shaped parameters at the cloud instance metadata address (self-contained, no external infra needed); optional out-of-band check if you supply your own callback-service URL |
+| `inventory_tests.py` | API9:2023 Improper Inventory Management | Probes for live-but-undeclared sibling API versions next to each declared versioned path, plus reachable, undeclared documentation/introspection endpoints (`/swagger.json`, `/actuator/env`, GraphQL introspection, etc.) |
 
-**Coverage status against the OWASP API Security Top 10:** 7 of 10 categories have a dedicated dynamic test module (above). The remaining three are intentionally out of scope for v1, each for a structural reason rather than an oversight:
+**Coverage status against the OWASP API Security Top 10:** 8 of 10 categories have a dedicated dynamic test module (above). The remaining two are intentionally out of scope for v1, each for a structural reason rather than an oversight:
 - **API6:2023 Unrestricted Access to Sensitive Business Flows** — detecting this requires understanding what a *business* flow means for a given API (e.g. "buying out all inventory of a limited item"), not something a generic HTTP probe can infer.
-- **API9:2023 Improper Inventory Management** — an asset-drift/documentation problem (undocumented API versions left running), not something observable from a single scan.
 - **API10:2023 Unsafe Consumption of APIs** — about trusting third-party APIs *this* API calls, which needs visibility into the target's own outbound integrations that AegisLab, testing from outside, doesn't have.
+
+`inventory_tests.py` intentionally covers a narrower slice of API9 than a full asset inventory audit would (it has no access to deployment records or an asset registry) — it reports only what a single scan can *empirically confirm is still reachable*: a sibling API version next to a declared one, or a standard doc/introspection path responding live. That's a meaningful, if partial, signal for the same underlying "we don't actually know our full deployed surface" problem.
 
 ### Vulnerability output schema
 
