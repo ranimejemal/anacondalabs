@@ -10,6 +10,6 @@
  * still works fully without Supabase configured.
  */
 window.AEGISLAB_CONFIG = {
-  SUPABASE_URL: "https://dxbuzmzmtuyrjgtmhrxh.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4YnV6bXptdHV5cmpndG1ocnhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MzQxODEsImV4cCI6MjA5OTExMDE4MX0.4M-j2JReoOJMuyQE5SjtCTeidux5GXfHFojcIcxzhcg",
+  SUPABASE_URL: "https://qsmemypfubmnfmwhtslf.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzbWVteXBmdWJtbmZtd2h0c2xmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0MzQ5ODEsImV4cCI6MjEwNTAxMDk4MX0.IZr6InmtBoRv-CTLOmBUeEjxtSWu9pDLM1EDnmrssDU",
 };
