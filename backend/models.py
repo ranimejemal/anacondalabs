@@ -63,6 +63,7 @@ class ScanConfig(BaseModel):
         "transport_security_tests",
         "mass_assignment_tests",
         "ssrf_tests",
+        "inventory_tests",
     ])
     requests_per_second: float = 5.0  # throttle to keep tests safe on the target
     confirm_authorized: bool = False  # MUST be true to run — explicit consent gate

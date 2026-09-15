@@ -14,6 +14,7 @@ const MODULES = [
   { id: "transport_security_tests", label: "transport_security_tests" },
   { id: "mass_assignment_tests", label: "mass_assignment_tests" },
   { id: "ssrf_tests", label: "ssrf_tests" },
+  { id: "inventory_tests", label: "inventory_tests" },
 ];
 
 const SEV_COLOR = {
