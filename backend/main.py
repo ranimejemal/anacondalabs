@@ -376,6 +376,19 @@ def _extract_filename_from_endpoint(endpoint: str) -> str | None:
     return None
 
 
+def _rewrite_zip_entry(zip_path: Path, target_name: str, new_content: str) -> None:
+    """Rewrites exactly one entry's content inside zip_path in place. The
+    zipfile module can't edit an entry directly, so this writes a fresh
+    archive and swaps it in — shared by the single-finding and bulk
+    auto-fix endpoints below."""
+    tmp_path = zip_path.with_suffix(".tmp.zip")
+    with zipfile.ZipFile(zip_path, "r") as zin, zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = new_content.encode("utf-8") if item.filename == target_name else zin.read(item.filename)
+            zout.writestr(item, data)
+    tmp_path.replace(zip_path)
+
+
 @app.get("/api/me")
 async def get_me(user: AuthedUser = Depends(get_current_user)):
     """Lets the frontend show 'Signed in as ... (Premium)' and decide which
@@ -522,21 +535,101 @@ async def ai_auto_fix(req: AutoFixRequest, user: AuthedUser = Depends(get_curren
     timestamp = int(time.time())
     out_path = REPORTS_DIR / f"aegislab_autofix_{req.scan_id[:8]}_{timestamp}.zip"
     shutil.copyfile(zip_path, out_path)
-
-    # Rewrite just the one target file inside the copied zip. The zipfile
-    # module can't edit in place, so write a fresh archive and swap it in.
-    tmp_path = out_path.with_suffix(".tmp.zip")
-    with zipfile.ZipFile(out_path, "r") as zin, zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zout:
-        for item in zin.infolist():
-            data = patched_content.encode("utf-8") if item.filename == target_name else zin.read(item.filename)
-            zout.writestr(item, data)
-    tmp_path.replace(out_path)
+    _rewrite_zip_entry(out_path, target_name, patched_content)
 
     return {
         "path": str(out_path.resolve()),
         "filename": out_path.name,
         "patched_file": filename,
         "ai_explanation": f"Patched {filename} for: {req.finding.issue}",
+    }
+
+
+class FixAllRequest(BaseModel):
+    scan_id: str
+
+
+@app.post("/api/ai/fix-all")
+async def ai_fix_all(req: FixAllRequest, user: AuthedUser = Depends(get_current_user)):
+    """Bulk version of the two endpoints above: walks EVERY finding in the
+    given scan (not just the Top 5 Priority Fixes panel), and for each one
+    either applies a full file patch (premium, static scans, when the
+    finding maps to one resolvable source file) or falls back to a text
+    suggestion (free tier, live/DAST scans, or a finding with no single
+    file to patch) — same underlying Anthropic calls as the per-finding
+    buttons, just looped, and still metered by the existing daily rate
+    limits rather than bypassing them for a batch: once the cap is hit,
+    remaining findings are reported as skipped instead of silently
+    dropped or erroring the whole batch out.
+    """
+    result = _static_scans.get(req.scan_id)
+    is_static = result is not None
+    if result is None:
+        entry = _scans.get(req.scan_id)
+        result = entry["result"] if entry else None
+    if result is None:
+        raise HTTPException(status_code=404, detail="Unknown scan_id, or the live scan hasn't finished yet.")
+
+    findings = result.vulnerabilities
+    if not findings:
+        return {"fixed": [], "skipped_rate_limited": 0, "output_zip": None}
+
+    zip_path = _static_scan_zips.get(req.scan_id) if is_static else None
+    can_patch = bool(is_static and zip_path and zip_path.exists() and user.is_premium)
+
+    out_path = None
+    zin_names: list[str] = []
+    patched_names: set[str] = set()
+    if can_patch:
+        timestamp = int(time.time())
+        out_path = REPORTS_DIR / f"aegislab_fixall_{req.scan_id[:8]}_{timestamp}.zip"
+        shutil.copyfile(zip_path, out_path)
+        with zipfile.ZipFile(out_path, "r") as zin:
+            zin_names = zin.namelist()
+
+    fixed: list[dict] = []
+    skipped_rate_limited = 0
+
+    for finding in findings:
+        filename = _extract_filename_from_endpoint(finding.endpoint) if can_patch else None
+        target_name = None
+        if filename:
+            matches = [n for n in zin_names if n == filename or n.endswith("/" + filename)]
+            target_name = matches[0] if matches else None
+        already_patched = target_name is not None and target_name in patched_names
+        will_patch = target_name is not None and not already_patched
+
+        kind_limit = "auto_fix" if will_patch else "suggest"
+        limit = ai_remediation.AUTOFIX_DAILY_LIMIT if will_patch else ai_remediation.SUGGEST_DAILY_LIMIT
+        try:
+            ai_remediation.check_rate_limit(user.id, kind_limit, limit)
+        except HTTPException:
+            skipped_rate_limited += 1
+            continue
+
+        finding_dict = finding.to_report_dict()
+        try:
+            if will_patch:
+                with zipfile.ZipFile(out_path, "r") as zcur:
+                    original_content = zcur.read(target_name).decode("utf-8")
+                patched_content = await ai_remediation.generate_file_patch(finding_dict, filename, original_content)
+                _rewrite_zip_entry(out_path, target_name, patched_content)
+                patched_names.add(target_name)
+                fixed.append({"id": finding.id, "issue": finding.issue, "kind": "patch", "file": filename})
+            else:
+                suggestion = await ai_remediation.generate_suggestion(finding_dict)
+                fixed.append({
+                    "id": finding.id, "issue": finding.issue, "kind": "suggestion",
+                    "ai_suggestion": suggestion["ai_suggestion"],
+                    "already_patched_this_file": already_patched,
+                })
+        except HTTPException as e:
+            fixed.append({"id": finding.id, "issue": finding.issue, "kind": "error", "error": e.detail})
+
+    return {
+        "fixed": fixed,
+        "skipped_rate_limited": skipped_rate_limited,
+        "output_zip": {"path": str(out_path.resolve()), "filename": out_path.name} if (out_path and patched_names) else None,
     }
 
 

@@ -10,10 +10,12 @@ regression this suite exists to catch.
 
 Run with:  pytest backend/ -v
 """
+import time
 import zipfile
 
 import ai_remediation
 import main
+from models import ScanResult, Vulnerability, Severity
 
 from conftest import FREE_USER, PREMIUM_USER
 
@@ -256,3 +258,148 @@ def test_premium_free_for_all_flag_does_not_bypass_authentication(client, mock_s
 
     resp = client.get("/api/me", headers={"Authorization": "Bearer garbage-token"})
     assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# /api/ai/fix-all — bulk version of suggest/auto-fix over every finding
+# ---------------------------------------------------------------------------
+
+def _vuln(endpoint, issue="Some issue", severity=Severity.MEDIUM):
+    return Vulnerability(
+        endpoint=endpoint, method="POST", test_module="mass_assignment_tests",
+        owasp_category="API3:2023 Broken Object Property Level Authorization",
+        issue=issue, severity=severity,
+        description="desc", impact="impact", recommendation="recommendation",
+    )
+
+
+def test_fix_all_unknown_scan_id_404(client, mock_supabase, mock_claude):
+    resp = client.post(
+        "/api/ai/fix-all", json={"scan_id": "never-existed"},
+        headers={"Authorization": "Bearer valid-premium-token"},
+    )
+    assert resp.status_code == 404
+
+
+def test_fix_all_static_premium_patches_distinct_files_and_suggests_the_rest(
+    client, mock_supabase, mock_claude, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(main, "REPORTS_DIR", tmp_path)
+    scan_id = "fixall-static-1"
+    zip_path = tmp_path / "source.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("src/auth.js", "// original\n")
+        zf.writestr("src/users.js", "// original\n")
+    main._static_scan_zips[scan_id] = zip_path
+
+    findings = [
+        _vuln("POST /auth/login (src/auth.js:12)", issue="Missing rate limit"),
+        _vuln("POST /users (src/users.js:5)", issue="Mass assignment"),
+        _vuln("project-wide missing CORS policy", issue="No CORS policy"),
+    ]
+    main._static_scans[scan_id] = ScanResult(
+        scan_id=scan_id, base_url="(static scan)", started_at=time.time(),
+        status="completed", vulnerabilities=findings,
+    )
+
+    resp = client.post(
+        "/api/ai/fix-all", json={"scan_id": scan_id},
+        headers={"Authorization": "Bearer valid-premium-token"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+
+    kinds = {f["issue"]: f["kind"] for f in body["fixed"]}
+    assert kinds["Missing rate limit"] == "patch"
+    assert kinds["Mass assignment"] == "patch"
+    assert kinds["No CORS policy"] == "suggestion"  # no single file to patch
+    assert body["output_zip"]["filename"].endswith(".zip")
+    assert body["skipped_rate_limited"] == 0
+
+
+def test_fix_all_free_user_gets_suggestions_only_even_on_static_scan(
+    client, mock_supabase, mock_claude, tmp_path, monkeypatch
+):
+    """Auto-patching is a premium feature — a free user hitting fix-all on a
+    static scan should get text suggestions for everything, never a patched
+    zip, same tier boundary as the single-finding endpoints."""
+    monkeypatch.setattr(main, "REPORTS_DIR", tmp_path)
+    scan_id = "fixall-static-free"
+    zip_path = tmp_path / "source.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("src/auth.js", "// original\n")
+    main._static_scan_zips[scan_id] = zip_path
+    main._static_scans[scan_id] = ScanResult(
+        scan_id=scan_id, base_url="(static scan)", started_at=time.time(),
+        status="completed", vulnerabilities=[_vuln("POST /auth/login (src/auth.js:12)")],
+    )
+
+    resp = client.post(
+        "/api/ai/fix-all", json={"scan_id": scan_id},
+        headers={"Authorization": "Bearer valid-free-token"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["fixed"][0]["kind"] == "suggestion"
+    assert body["output_zip"] is None
+
+
+def test_fix_all_live_scan_uses_suggestions_only(client, mock_supabase, mock_claude):
+    """A live/DAST scan has no uploaded source zip at all, so even a
+    premium user only gets text suggestions, never a patch attempt."""
+    scan_id = "fixall-live-1"
+    main._scans[scan_id] = {
+        "queue": None, "status": "completed",
+        "result": ScanResult(
+            scan_id=scan_id, base_url="http://example.com", started_at=time.time(),
+            status="completed", vulnerabilities=[_vuln("GET /users/{id}")],
+        ),
+    }
+
+    resp = client.post(
+        "/api/ai/fix-all", json={"scan_id": scan_id},
+        headers={"Authorization": "Bearer valid-premium-token"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["fixed"][0]["kind"] == "suggestion"
+    assert body["output_zip"] is None
+
+
+def test_fix_all_reports_skipped_findings_once_rate_limit_hit(client, mock_supabase, mock_claude, monkeypatch):
+    monkeypatch.setattr(ai_remediation, "SUGGEST_DAILY_LIMIT", 1)
+    scan_id = "fixall-rate-limited"
+    main._scans[scan_id] = {
+        "queue": None, "status": "completed",
+        "result": ScanResult(
+            scan_id=scan_id, base_url="http://example.com", started_at=time.time(),
+            status="completed",
+            vulnerabilities=[_vuln("GET /a", issue="A"), _vuln("GET /b", issue="B"), _vuln("GET /c", issue="C")],
+        ),
+    }
+
+    resp = client.post(
+        "/api/ai/fix-all", json={"scan_id": scan_id},
+        headers={"Authorization": "Bearer valid-free-token"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["fixed"]) == 1
+    assert body["skipped_rate_limited"] == 2
+
+
+def test_fix_all_no_findings_returns_empty_result(client, mock_supabase, mock_claude):
+    scan_id = "fixall-empty"
+    main._scans[scan_id] = {
+        "queue": None, "status": "completed",
+        "result": ScanResult(
+            scan_id=scan_id, base_url="http://example.com", started_at=time.time(),
+            status="completed", vulnerabilities=[],
+        ),
+    }
+    resp = client.post(
+        "/api/ai/fix-all", json={"scan_id": scan_id},
+        headers={"Authorization": "Bearer valid-premium-token"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"fixed": [], "skipped_rate_limited": 0, "output_zip": None}

@@ -545,6 +545,92 @@ function renderPriorityFixes(vulnerabilities) {
   list.querySelectorAll(".ai-fix-btn").forEach((btn) => {
     btn.addEventListener("click", () => handleAiFixClick(Number(btn.dataset.fixIndex), fixes));
   });
+
+  setupFixAllButton(vulnerabilities.length);
+}
+
+function setupFixAllButton(findingCount) {
+  const btn = document.getElementById("fixAllBtn");
+  const hint = document.getElementById("fixAllHint");
+  const resultsEl = document.getElementById("fixAllResults");
+  resultsEl.style.display = "none";
+  resultsEl.innerHTML = "";
+
+  if (!window.aegisAuth || !window.aegisAuth.isSignedIn()) {
+    btn.disabled = true;
+    hint.textContent = "Sign in from the sidebar to fix every finding in this scan with AI, not just the top 5.";
+    btn.onclick = null;
+    return;
+  }
+
+  const willAutoPatch = window.aegisAuth.isPremium() && state.scanType === "static";
+  btn.disabled = false;
+  hint.textContent = willAutoPatch
+    ? `Patches every fixable finding (${findingCount} total) directly into a downloadable copy of your source — falls back to a text suggestion for project-wide findings.`
+    : `Gets an AI text suggestion for every finding in this scan (${findingCount} total), not just the Top 5 above.`;
+  btn.onclick = () => handleFixAllClick(findingCount);
+}
+
+async function handleFixAllClick(findingCount) {
+  const btn = document.getElementById("fixAllBtn");
+  const resultsEl = document.getElementById("fixAllResults");
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = `Fixing ${findingCount} finding(s)…`;
+  resultsEl.style.display = "block";
+  resultsEl.innerHTML = `<p class="finding-meta">Asking AI for a fix on every finding — this can take a while for a large scan…</p>`;
+
+  try {
+    const token = window.aegisAuth.getAccessToken();
+    const resp = await fetch(`${BACKEND_URL}/api/ai/fix-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ scan_id: state.currentScanId }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "Fix all failed");
+
+    const patched = data.fixed.filter((f) => f.kind === "patch");
+    const suggested = data.fixed.filter((f) => f.kind === "suggestion");
+    const errored = data.fixed.filter((f) => f.kind === "error");
+
+    const summaryParts = [];
+    if (patched.length) summaryParts.push(`${patched.length} file(s) patched`);
+    if (suggested.length) summaryParts.push(`${suggested.length} suggestion(s)`);
+    if (errored.length) summaryParts.push(`${errored.length} failed`);
+    if (data.skipped_rate_limited) summaryParts.push(`${data.skipped_rate_limited} skipped (daily AI limit reached)`);
+
+    const downloadBlock = data.output_zip ? `
+      <button class="btn-ghost ai-fix-btn" id="fixAllDownload">Download patched .zip (${patched.length} file(s))</button>
+    ` : "";
+
+    resultsEl.innerHTML = `
+      <p class="finding-meta"><b>Done:</b> ${escapeHtml(summaryParts.join(", ") || "nothing to fix")}.</p>
+      ${downloadBlock}
+      <div class="fix-all-list">
+        ${data.fixed.map((f) => `
+          <div class="snippet-block">
+            <p class="snippet-title">${f.kind === "patch" ? "✓ Patched" : f.kind === "error" ? "✗ Failed" : "AI suggestion"} — ${escapeHtml(f.issue)}</p>
+            ${f.kind === "suggestion" ? `<pre class="snippet-code"><code>${escapeHtml(f.ai_suggestion)}</code></pre>` : ""}
+            ${f.kind === "error" ? `<p class="finding-meta">${escapeHtml(f.error)}</p>` : ""}
+          </div>
+        `).join("")}
+      </div>`;
+
+    if (data.output_zip) {
+      document.getElementById("fixAllDownload").addEventListener("click", async () => {
+        if (window.aegis && window.aegis.saveReport) {
+          const result = await window.aegis.saveReport(data.output_zip.filename, data.output_zip.path);
+          setStatus(result.saved ? `Saved patched source to ${result.path}` : "Download cancelled.");
+        }
+      });
+    }
+  } catch (err) {
+    resultsEl.innerHTML = `<p class="finding-meta">Fix all failed: ${escapeHtml(err.message)}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
 }
 
 function renderAiFixButton(i) {

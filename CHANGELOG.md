@@ -2,6 +2,24 @@
 
 ## [Unreleased] — pending: Stripe live-account testing, code signing, beta feedback
 
+## Sprint 6 — "Fix all" bulk AI remediation
+- New `POST /api/ai/fix-all` endpoint: walks every finding in a scan
+  (not just the Top 5 Priority Fixes) and either patches the affected
+  file (premium, static scans) or falls back to a text suggestion
+  (free tier, live scans, or project-wide findings with no single file),
+  batching all patches into one downloadable zip. Still metered by the
+  existing per-user daily rate limits — once hit, remaining findings are
+  reported as skipped rather than erroring the whole batch.
+- Refactored the single-file zip-rewrite logic out of `/api/ai/auto-fix`
+  into a shared `_rewrite_zip_entry()` helper, used by both endpoints.
+- New "✦ Fix all in AI Suggestions" button in the Top Priority Fixes
+  panel, gated the same way as the existing per-finding button
+  (sign-in required, auto-patch vs. suggestion-only by plan/scan type),
+  with a results list and a single download for the patched archive.
+- 8 new backend tests (patch batching across distinct files, free-tier
+  and live-scan suggestion-only paths, partial rate-limit skipping,
+  empty-findings case); 52 pytest tests total, all passing.
+
 ## v1.3.0 (this session's starting point)
 - Core scanning engine: 6 OWASP-mapped dynamic test modules (auth,
   authorization, injection, rate limiting, data exposure, transport

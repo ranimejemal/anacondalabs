@@ -135,6 +135,8 @@ body {
   margin-top: 8px; font-family: var(--font-body);
 }
 .btn-ghost:hover { border-color: var(--c-brass); color: var(--c-brass-bright); }
+.btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-ghost:disabled:hover { border-color: var(--c-line); color: var(--c-text-soft); }
 
 /* ---------- Module dial list ---------- */
 .dial-list { display: flex; flex-direction: column; gap: 6px; }
@@ -242,7 +244,11 @@ body {
 
 /* ---------- Priority Fixes panel ---------- */
 .priority-section { background: var(--c-panel); border: 1px solid var(--c-brass); border-radius: 6px; padding: 16px; }
+.priority-section .findings-header { flex-wrap: wrap; gap: 8px; }
+.priority-section #fixAllBtn { margin-top: 0; }
 .priority-list { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.fix-all-results { margin-top: 16px; border-top: 1px solid var(--c-line); padding-top: 12px; }
+.fix-all-list { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 
 .priority-card {
   display: flex; gap: 12px; background: var(--c-panel-raised); border: 1px solid var(--c-line);
