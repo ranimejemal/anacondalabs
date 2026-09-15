@@ -2,6 +2,28 @@
 
 ## [Unreleased] — pending: Stripe live-account testing, code signing, beta feedback
 
+## Sprint 7 — GitHub "Connect account" + repo import
+- `backend/github_integration.py`: OAuth Authorization Code flow (with
+  CSRF state validation), repo listing, and repo-as-zip download via
+  GitHub's API. `GITHUB_CLIENT_SECRET` never leaves the backend process.
+- New endpoints: `GET /api/github/oauth/authorize-url`,
+  `POST /api/github/oauth/exchange`, `GET /api/github/repos`,
+  `POST /api/github/import` — the last one feeds a picked repo through
+  the exact same static-scan pipeline as an uploaded `.zip`
+  (`_run_static_scan_and_store`, factored out of `/api/static-scan/upload`
+  for this reuse).
+- Electron main process now registers a custom `aegislab://` protocol and
+  single-instance lock to receive GitHub's OAuth redirect regardless of
+  platform (`open-url` on macOS, `second-instance` argv forwarding on
+  Windows/Linux), and persists the resulting access token encrypted at
+  rest via `safeStorage`.
+- New "Connect GitHub" UI in the static-scan sidebar: sign in, pick a
+  repo from a dropdown, import & scan — same findings/gauge/export UI as
+  any other static scan.
+- 16 new backend tests (OAuth state issuance/consumption/reuse-rejection,
+  token exchange error paths, repo listing pagination/401, zip download
+  size cap, and the four new endpoints); 68 pytest tests total.
+
 ## Sprint 6 — "Fix all" bulk AI remediation
 - New `POST /api/ai/fix-all` endpoint: walks every finding in a scan
   (not just the Top 5 Priority Fixes) and either patches the affected

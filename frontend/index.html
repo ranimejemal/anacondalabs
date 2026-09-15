@@ -76,6 +76,18 @@
         <span id="staticDropzoneText">Click to upload source .zip</span>
       </div>
       <p class="field-hint" id="staticScanStatus"></p>
+
+      <div class="github-import-box" id="githubImportBox">
+        <p class="field-hint" style="margin-top:10px;">— or —</p>
+        <button class="btn-ghost" id="githubConnectBtn" type="button" style="width:100%;">⎇ Connect GitHub to import a repo</button>
+        <p class="field-hint" id="githubConnectHint"></p>
+
+        <div id="githubConnectedBox" style="display:none;">
+          <p class="field-hint" style="margin-top:0;">Connected as <b id="githubLogin"></b> — <a href="#" id="githubDisconnectLink" class="link-secondary">disconnect</a></p>
+          <select id="githubRepoSelect" class="field-input"><option value="">Loading repositories…</option></select>
+          <button class="btn-ghost" id="githubImportBtn" type="button" style="width:100%;">Import &amp; scan selected repo</button>
+        </div>
+      </div>
     </section>
 
     <section class="panel-section">

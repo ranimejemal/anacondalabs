@@ -32,6 +32,8 @@ let state = {
   currentResult: null,
   activeFilter: "ALL",
   scanType: "dynamic", // "dynamic" | "static" — determines which report endpoint export hits
+  githubToken: null,
+  githubLogin: null,
 };
 
 // ---------- crash / error logging (Sprint 5 Day 7) ----------
@@ -62,6 +64,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   wireUpEvents();
   waitForBackend();
   initOnboarding();
+  initGithubIntegration();
 });
 
 async function waitForBackend(retries = 20) {
@@ -163,6 +166,134 @@ function wireUpEvents() {
   document.getElementById("baseUrl").addEventListener("input", (e) => {
     document.getElementById("targetLabel").textContent = e.target.value || "No target configured";
   });
+
+  document.getElementById("githubConnectBtn").addEventListener("click", handleGithubConnectClick);
+  document.getElementById("githubDisconnectLink").addEventListener("click", handleGithubDisconnect);
+  document.getElementById("githubImportBtn").addEventListener("click", handleGithubImportClick);
+}
+
+// ---------- GitHub "Connect account" import ----------
+async function initGithubIntegration() {
+  if (!window.aegis || !window.aegis.onGithubOauthCallback) return;
+  window.aegis.onGithubOauthCallback(handleGithubOauthCallback);
+
+  if (!window.aegis.loadGithubToken) return;
+  const saved = await window.aegis.loadGithubToken();
+  if (saved && saved.access_token) {
+    state.githubToken = saved.access_token;
+    state.githubLogin = saved.login;
+    showGithubConnected();
+    loadGithubRepos();
+  }
+}
+
+function showGithubConnected() {
+  document.getElementById("githubConnectBtn").style.display = "none";
+  document.getElementById("githubConnectHint").textContent = "";
+  document.getElementById("githubConnectedBox").style.display = "block";
+  document.getElementById("githubLogin").textContent = state.githubLogin || "GitHub";
+}
+
+function showGithubDisconnected() {
+  document.getElementById("githubConnectBtn").style.display = "block";
+  document.getElementById("githubConnectedBox").style.display = "none";
+}
+
+async function handleGithubConnectClick() {
+  const hint = document.getElementById("githubConnectHint");
+  hint.textContent = "Opening GitHub in your browser…";
+  if (!window.aegis || !window.aegis.connectGithub) {
+    hint.textContent = "GitHub connect isn't available in this build.";
+    return;
+  }
+  const result = await window.aegis.connectGithub();
+  if (!result.opened) {
+    hint.textContent = `Couldn't start GitHub sign-in: ${result.reason}`;
+  }
+}
+
+async function handleGithubOauthCallback({ code, state: oauthState, error }) {
+  const hint = document.getElementById("githubConnectHint");
+  if (error) {
+    hint.textContent = `GitHub sign-in was cancelled or failed: ${error}`;
+    return;
+  }
+  hint.textContent = "Finishing GitHub sign-in…";
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/github/oauth/exchange`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, state: oauthState }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "GitHub sign-in failed");
+
+    state.githubToken = data.access_token;
+    state.githubLogin = data.login;
+    if (window.aegis.saveGithubToken) {
+      await window.aegis.saveGithubToken({ access_token: data.access_token, login: data.login });
+    }
+    showGithubConnected();
+    loadGithubRepos();
+  } catch (err) {
+    hint.textContent = `GitHub sign-in failed: ${err.message}`;
+  }
+}
+
+async function handleGithubDisconnect(e) {
+  e.preventDefault();
+  state.githubToken = null;
+  state.githubLogin = null;
+  if (window.aegis && window.aegis.clearGithubToken) await window.aegis.clearGithubToken();
+  showGithubDisconnected();
+}
+
+async function loadGithubRepos() {
+  const select = document.getElementById("githubRepoSelect");
+  select.innerHTML = `<option value="">Loading repositories…</option>`;
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/github/repos`, {
+      headers: { "X-GitHub-Token": state.githubToken },
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "Could not load repositories");
+    if (!data.repos.length) {
+      select.innerHTML = `<option value="">No repositories found</option>`;
+      return;
+    }
+    select.innerHTML = data.repos.map((r) =>
+      `<option value="${escapeHtml(r.full_name)}" data-branch="${escapeHtml(r.default_branch)}">${escapeHtml(r.full_name)}${r.private ? " (private)" : ""}</option>`
+    ).join("");
+  } catch (err) {
+    select.innerHTML = `<option value="">Failed to load repositories</option>`;
+    setStatus(`Could not load GitHub repositories: ${err.message}`);
+  }
+}
+
+async function handleGithubImportClick() {
+  const select = document.getElementById("githubRepoSelect");
+  const fullName = select.value;
+  if (!fullName) { setStatus("Pick a repository to import first."); return; }
+  const [owner, repo] = fullName.split("/");
+  const ref = select.selectedOptions[0] ? select.selectedOptions[0].dataset.branch : null;
+
+  setStatus(`Importing ${fullName} from GitHub…`);
+  const btn = document.getElementById("githubImportBtn");
+  btn.disabled = true;
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/github/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: state.githubToken, owner, repo, ref }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "GitHub import failed");
+    onStaticScanFinished(data);
+  } catch (err) {
+    setStatus(`GitHub import failed: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function handleSpecFile(e) {
@@ -222,7 +353,8 @@ function onStaticScanFinished(data) {
     `Scanned ${data.files_scanned} file(s) — detected: ${data.frameworks_detected.join(", ")}.`;
   setStatus(`Static scan complete — score ${result.security_score}/100, ${result.vulnerabilities.length} finding(s).`);
 
-  document.getElementById("targetLabel").textContent = `Static scan: ${result.base_url.replace("(static scan: ", "").replace(")", "")}`;
+  const labelMatch = result.base_url.match(/^\((.+)\)$/);
+  document.getElementById("targetLabel").textContent = labelMatch ? labelMatch[1] : result.base_url;
   document.getElementById("scanMeta").textContent =
     `${data.files_scanned} file(s) scanned · frameworks: ${data.frameworks_detected.join(", ")}`;
 

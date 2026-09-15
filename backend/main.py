@@ -24,7 +24,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent / ".env")  # backend/.env, see .env.example
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Depends, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Depends, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from pydantic import BaseModel
@@ -45,6 +45,7 @@ from supabase_auth import (
 )
 import ai_remediation
 import stripe_billing
+import github_integration
 import re
 import zipfile
 import shutil
@@ -276,6 +277,42 @@ _static_scans: dict[str, ScanResult] = {}
 _static_scan_zips: dict[str, Path] = {}
 
 
+def _run_static_scan_and_store(upload_path: Path, source_label: str) -> dict:
+    """Shared tail end of both static-scan entry points (a direct .zip
+    upload, and a GitHub repo import): runs the SAST scanner, scores it,
+    stores the ScanResult + the on-disk zip (for later AI auto-fix), and
+    returns the exact response shape the frontend renders either way."""
+    try:
+        scan_output = scan_zip(str(upload_path))
+    except ZipRejectedError as e:
+        upload_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(e))
+
+    scan_id = str(uuid.uuid4())
+    score, breakdown = compute_score(scan_output["findings"])
+    result = ScanResult(
+        scan_id=scan_id,
+        base_url=source_label,
+        started_at=time.time(),
+        finished_at=time.time(),
+        status="completed",
+        vulnerabilities=scan_output["findings"],
+        security_score=score,
+        score_breakdown=breakdown,
+        endpoints_tested=scan_output["files_scanned"],
+        modules_run=["static_secret_scan"] + [f"static_{f}_config" for f in scan_output["frameworks_detected"] if f in ("express", "nestjs")],
+    )
+    _static_scans[scan_id] = result
+    _static_scan_zips[scan_id] = upload_path  # kept on disk for AI auto-fix
+
+    return {
+        "scan_id": scan_id,
+        "frameworks_detected": scan_output["frameworks_detected"],
+        "files_scanned": scan_output["files_scanned"],
+        "result": result.model_dump(),
+    }
+
+
 @app.post("/api/static-scan/upload")
 async def static_scan_upload(file: UploadFile = File(...)):
     """
@@ -297,35 +334,53 @@ async def static_scan_upload(file: UploadFile = File(...)):
                 raise HTTPException(status_code=413, detail="Archive exceeds the 200MB upload limit.")
             out.write(chunk)
 
-    try:
-        scan_output = scan_zip(str(upload_path))
-    except ZipRejectedError as e:
-        upload_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=str(e))
+    return _run_static_scan_and_store(upload_path, f"(static scan: {file.filename})")
 
-    scan_id = str(uuid.uuid4())
-    score, breakdown = compute_score(scan_output["findings"])
-    result = ScanResult(
-        scan_id=scan_id,
-        base_url=f"(static scan: {file.filename})",
-        started_at=time.time(),
-        finished_at=time.time(),
-        status="completed",
-        vulnerabilities=scan_output["findings"],
-        security_score=score,
-        score_breakdown=breakdown,
-        endpoints_tested=scan_output["files_scanned"],
-        modules_run=["static_secret_scan"] + [f"static_{f}_config" for f in scan_output["frameworks_detected"] if f in ("express", "nestjs")],
-    )
-    _static_scans[scan_id] = result
-    _static_scan_zips[scan_id] = upload_path  # kept on disk for AI auto-fix
 
-    return {
-        "scan_id": scan_id,
-        "frameworks_detected": scan_output["frameworks_detected"],
-        "files_scanned": scan_output["files_scanned"],
-        "result": result.model_dump(),
-    }
+class GithubExchangeRequest(BaseModel):
+    code: str
+    state: str
+
+
+class GithubImportRequest(BaseModel):
+    access_token: str
+    owner: str
+    repo: str
+    ref: str | None = None
+
+
+@app.get("/api/github/oauth/authorize-url")
+async def github_authorize_url():
+    """Returns the full GitHub OAuth consent URL (with a fresh CSRF state)
+    for the Electron main process to open in the system browser."""
+    return {"url": github_integration.build_authorize_url()}
+
+
+@app.post("/api/github/oauth/exchange")
+async def github_oauth_exchange(req: GithubExchangeRequest):
+    """Exchanges the authorization code GitHub redirected back with (via
+    the aegislab:// deep link) for an access token. GITHUB_CLIENT_SECRET
+    never leaves this process — the Electron app only ever sees the
+    resulting access_token."""
+    return await github_integration.exchange_code_for_token(req.code, req.state)
+
+
+@app.get("/api/github/repos")
+async def github_repos(x_github_token: str = Header(..., alias="X-GitHub-Token")):
+    return {"repos": await github_integration.list_user_repos(x_github_token)}
+
+
+@app.post("/api/github/import")
+async def github_import(req: GithubImportRequest):
+    """Downloads the given repo (or ref) from GitHub as a zip and runs it
+    through the exact same static-scan pipeline as /api/static-scan/upload
+    (see _run_static_scan_and_store), so the frontend renders the result
+    with no separate code path."""
+    zip_bytes = await github_integration.download_repo_zip(req.access_token, req.owner, req.repo, req.ref)
+    upload_path = UPLOADS_DIR / f"{uuid.uuid4()}.zip"
+    upload_path.write_bytes(zip_bytes)
+    label = f"(GitHub import: {req.owner}/{req.repo}{'@' + req.ref if req.ref else ''})"
+    return _run_static_scan_and_store(upload_path, label)
 
 
 @app.get("/api/static-scan/{scan_id}/report-path")

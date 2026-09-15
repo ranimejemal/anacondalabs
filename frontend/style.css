@@ -334,6 +334,11 @@ body {
 .static-scan-box .dropzone { border-color: var(--c-line); }
 .static-scan-box { background: rgba(192,57,75,0.05); border-radius: var(--radius); padding: 4px 0 0; }
 
+.github-import-box { margin-top: 4px; }
+.github-import-box select.field-input { margin-top: 8px; }
+.github-import-box .btn-ghost { margin-top: 8px; }
+#githubConnectedBox { margin-top: 4px; }
+
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--c-line); border-radius: 4px; }

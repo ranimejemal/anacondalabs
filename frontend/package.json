@@ -28,6 +28,12 @@
         "filter": ["**/*", "!**/__pycache__/**", "!**/.env"]
       }
     ],
+    "protocols": [
+      {
+        "name": "AegisLab GitHub OAuth callback",
+        "schemes": ["aegislab"]
+      }
+    ],
     "win": { "target": "nsis" },
     "mac": { "target": "dmg", "category": "public.app-category.developer-tools" },
     "linux": { "target": "AppImage" },

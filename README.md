@@ -52,6 +52,7 @@ AegisLab/
 │   ├── supabase_auth.py         # Supabase auth verification + premium gating (server-side only)
 │   ├── ai_remediation.py        # Claude-powered fix suggestions + rate limiting
 │   ├── stripe_billing.py        # Stripe Checkout, customer portal, webhook handling
+│   ├── github_integration.py    # GitHub OAuth connect-account + repo list/import
 │   ├── static_scanner/          # SAST: secret leakage + Express/NestJS config checks
 │   │   ├── extractor.py         # Safe zip extraction (zip-slip + zip-bomb protected)
 │   │   ├── secret_scan.py       # Hardcoded credential / API key detection
@@ -254,11 +255,11 @@ Then in the AegisLab UI: base URL `http://127.0.0.1:9000`, import `examples/samp
 
 ---
 
-## 7. Optional: AI, sign-in, and billing setup
+## 7. Optional: AI, sign-in, billing, and GitHub import setup
 
 Scanning (both live-API and static SAST) works fully with zero
-configuration. AI-powered fixes, Supabase sign-in, and Stripe billing are
-optional add-ons layered on top:
+configuration. AI-powered fixes, Supabase sign-in, Stripe billing, and
+GitHub repo import are optional add-ons layered on top:
 
 - **Free accounts**: sign in, click "Get AI fix suggestion" on any Top
   Priority Fix — a real Claude-written explanation + code fix as text to
@@ -268,6 +269,14 @@ optional add-ons layered on top:
   fix" — the backend asks Claude to rewrite the actual affected file from
   your uploaded source, and hands you back a patched copy of your zip to
   download. Capped at 15/day by default.
+- **"Fix all in AI Suggestions"**: a bulk version of the two buttons above —
+  one click walks every finding in the current scan (not just the Top 5
+  panel), patching what it can (premium + static scans) and falling back to
+  a text suggestion for the rest, all against the same daily rate limits.
+- **Connect GitHub**: sign in to GitHub from the static-scan sidebar to pick
+  a repository (public or private) instead of manually zipping and
+  uploading your source — it's downloaded and run through the exact same
+  SAST pipeline as an uploaded `.zip`.
 
 ### Setup
 
@@ -284,8 +293,18 @@ optional add-ons layered on top:
    your `ANTHROPIC_API_KEY` from console.anthropic.com, and — if you want
    billing — your Stripe **test-mode** secret key, price ID, and webhook
    secret from dashboard.stripe.com.
-5. Restart the app. Anything left unconfigured just shows a "not
+5. For GitHub import: register a new OAuth App at
+   [github.com/settings/developers](https://github.com/settings/developers)
+   — Homepage URL can be anything (e.g. this repo's URL); **Authorization
+   callback URL must be exactly `aegislab://oauth/callback`** (the custom
+   protocol `frontend/main.js` registers so the desktop app can receive the
+   redirect). Put the app's Client ID and Client Secret into `backend/.env`
+   as `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
+6. Restart the app. Anything left unconfigured just shows a "not
    configured" message on the relevant button — scanning is unaffected.
+
+`backend/.env` is git-ignored (see `.gitignore`) — it must never be
+committed. `backend/.env.example` is the safe, secret-free template.
 
 ### How premium status actually gets set
 

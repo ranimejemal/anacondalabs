@@ -9,7 +9,7 @@
  *      opening the generated PDF/JSON in the OS default app) via IPC.
  */
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 const fs = require("fs");
@@ -17,6 +17,72 @@ const http = require("http");
 const { autoUpdater } = require("electron-updater");
 
 const BACKEND_PORT = 8765;
+const GITHUB_OAUTH_PROTOCOL = "aegislab";
+
+// ---------------------------------------------------------------------------
+// GitHub "Connect account" OAuth — custom protocol + deep-link handling
+// ---------------------------------------------------------------------------
+// GitHub redirects the system browser back to aegislab://oauth/callback
+// after the user approves the consent screen. Registering AegisLab as the
+// handler for that protocol is what lets the OS hand the redirect back to
+// this app. macOS delivers it via the 'open-url' event; Windows/Linux
+// instead launch a SECOND process with the URL as an argv, which the
+// single-instance lock below forwards to this (the real) process via
+// 'second-instance' instead of letting a duplicate window open.
+if (!app.isDefaultProtocolClient(GITHUB_OAUTH_PROTOCOL)) {
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(GITHUB_OAUTH_PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  } else {
+    app.setAsDefaultProtocolClient(GITHUB_OAUTH_PROTOCOL);
+  }
+}
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, argv) => {
+    const deepLink = argv.find((a) => a.startsWith(`${GITHUB_OAUTH_PROTOCOL}://`));
+    if (deepLink) handleOAuthCallbackUrl(deepLink);
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  handleOAuthCallbackUrl(url);
+});
+
+function handleOAuthCallbackUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return;
+  }
+  if (parsed.protocol !== `${GITHUB_OAUTH_PROTOCOL}:`) return;
+  if (!mainWindow) return;
+  mainWindow.webContents.send("github-oauth-callback", {
+    code: parsed.searchParams.get("code"),
+    state: parsed.searchParams.get("state"),
+    error: parsed.searchParams.get("error"),
+  });
+  mainWindow.focus();
+}
+
+// Encrypted-at-rest local persistence for the GitHub access token, via
+// Electron's safeStorage (OS keychain on macOS, DPAPI on Windows, libsecret
+// on Linux where available). Same trust boundary as the rest of this app:
+// the Electron main process and the local backend are already trusted to
+// each other, so the plaintext token is fine to pass over IPC/localhost —
+// what this protects against is the token sitting in a plaintext file on
+// disk between app launches.
+function githubTokenPath() {
+  return path.join(app.getPath("userData"), "github_token.enc");
+}
 // In dev, backend/ is a sibling of frontend/ on real disk. In a packaged
 // build, frontend/ ends up inside app.asar (a read-only archive) but
 // backend/ is shipped separately via "extraResources" (see package.json)
@@ -227,6 +293,15 @@ app.whenReady().then(() => {
   createWindow();
   checkForUpdates();
 
+  // Cold-start edge case: the app wasn't running yet and the OS launched
+  // it directly via the deep link (rare in practice, since normally the
+  // app is already open when the user clicks "Connect GitHub" — but cheap
+  // to handle for completeness).
+  const initialDeepLink = process.argv.find((a) => a.startsWith(`${GITHUB_OAUTH_PROTOCOL}://`));
+  if (initialDeepLink) {
+    mainWindow.webContents.once("did-finish-load", () => handleOAuthCallbackUrl(initialDeepLink));
+  }
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -340,4 +415,74 @@ ipcMain.handle("open-external", async (_event, url) => {
   }
   await shell.openExternal(url);
   return { opened: true };
+});
+
+// ---- IPC: GitHub OAuth token persistence, encrypted at rest via safeStorage ----
+ipcMain.handle("github-token-save", async (_event, tokenData) => {
+  if (!safeStorage.isEncryptionAvailable()) {
+    // Fall back to not persisting rather than writing plaintext to disk —
+    // the renderer still holds the token in memory for this session, it
+    // just won't survive a restart on a system with no OS-level keychain.
+    return { persisted: false };
+  }
+  const encrypted = safeStorage.encryptString(JSON.stringify(tokenData));
+  fs.writeFileSync(githubTokenPath(), encrypted);
+  return { persisted: true };
+});
+
+ipcMain.handle("github-token-load", async () => {
+  try {
+    if (!safeStorage.isEncryptionAvailable() || !fs.existsSync(githubTokenPath())) return null;
+    const encrypted = fs.readFileSync(githubTokenPath());
+    return JSON.parse(safeStorage.decryptString(encrypted));
+  } catch (err) {
+    logAppEvent("github-token-load failed", err.stack || String(err));
+    return null;
+  }
+});
+
+ipcMain.handle("github-token-clear", async () => {
+  try {
+    fs.unlinkSync(githubTokenPath());
+  } catch (_) {
+    // Already gone — fine.
+  }
+  return true;
+});
+
+ipcMain.handle("connect-github", async () => {
+  // The actual authorize URL (with client_id + a fresh CSRF state) comes
+  // from the backend, since only it knows GITHUB_CLIENT_ID — this handler
+  // just fetches it and opens it in the system browser via the same
+  // allow-listed open-external path used for Stripe checkout.
+  return new Promise((resolve) => {
+    http.get(
+      { host: "127.0.0.1", port: BACKEND_PORT, path: "/api/github/oauth/authorize-url", timeout: 5000 },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => (body += chunk));
+        res.on("end", async () => {
+          try {
+            const parsed = JSON.parse(body);
+            if (res.statusCode !== 200 || !parsed.url) {
+              resolve({ opened: false, reason: parsed.detail || "GitHub isn't configured on this install." });
+              return;
+            }
+            // Defense in depth: the URL always comes from our own trusted
+            // local backend, but double-check it's actually github.com
+            // before ever calling shell.openExternal on it.
+            const targetHost = new URL(parsed.url).hostname;
+            if (!ALLOWED_EXTERNAL_HOSTS.some((re) => re.test(targetHost))) {
+              resolve({ opened: false, reason: "backend returned an unexpected host" });
+              return;
+            }
+            await shell.openExternal(parsed.url);
+            resolve({ opened: true });
+          } catch (err) {
+            resolve({ opened: false, reason: err.message });
+          }
+        });
+      }
+    ).on("error", (err) => resolve({ opened: false, reason: err.message }));
+  });
 });
