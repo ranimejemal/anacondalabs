@@ -36,6 +36,14 @@ from fastapi import HTTPException
 GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
 GITHUB_OAUTH_REDIRECT_URI = os.environ.get("GITHUB_OAUTH_REDIRECT_URI", "aegislab://oauth/callback")
+# "repo" is broader than AegisLab actually needs (it grants read+write on
+# private repos; AegisLab only ever reads). It's used anyway because
+# classic GitHub OAuth Apps have no read-only scope that covers private
+# repositories — only GitHub Apps with fine-grained permissions do, which
+# is a materially bigger implementation (a registered App + installation
+# flow instead of a single OAuth App). Worth migrating to if this ever
+# needs tightening; documented here so the trade-off is explicit, not
+# accidental.
 GITHUB_SCOPE = "repo read:user"
 
 AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
@@ -216,23 +224,35 @@ async def download_repo_zip(access_token: str, owner: str, repo: str, ref: str |
     """Downloads a repo (a specific ref, or its default branch) as a zip via
     GitHub's archive endpoint — works for private repos too, since the
     token is sent as a normal Bearer credential. The returned bytes are
-    handed to the existing static-scan zip pipeline unchanged."""
+    handed to the existing static-scan zip pipeline unchanged.
+
+    Streams the response and aborts as soon as the 200MB cap is exceeded,
+    rather than buffering the whole body first — same limit the direct
+    .zip upload path enforces, and the same reason: don't let a single
+    oversized response sit fully in memory before it's rejected."""
     path = f"/repos/{owner}/{repo}/zipball" + (f"/{ref}" if ref else "")
+    ref_suffix = f"@{ref}" if ref else ""
+    chunks: list[bytes] = []
+    total = 0
     try:
         async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
-            resp = await client.get(f"{API_BASE}{path}", headers=_api_headers(access_token))
+            async with client.stream("GET", f"{API_BASE}{path}", headers=_api_headers(access_token)) as resp:
+                if resp.status_code == 404:
+                    raise HTTPException(status_code=404, detail=f"Repository or ref not found: {owner}/{repo}{ref_suffix}")
+                if resp.status_code == 401:
+                    raise HTTPException(status_code=401, detail="Your GitHub connection has expired or been revoked. Reconnect from the sidebar.")
+                if resp.status_code >= 400:
+                    body = await resp.aread()
+                    raise HTTPException(status_code=502, detail=f"Downloading the repository from GitHub failed: {body[:300].decode('utf-8', 'replace')}")
+
+                async for chunk in resp.aiter_bytes():
+                    total += len(chunk)
+                    if total > MAX_REPO_ZIP_BYTES:
+                        raise HTTPException(status_code=413, detail="Repository archive exceeds the 200MB scan limit.")
+                    chunks.append(chunk)
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Downloading the repository from GitHub timed out. Try again.")
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"Couldn't reach GitHub — check your connection. ({type(e).__name__})")
 
-    if resp.status_code == 404:
-        ref_suffix = f"@{ref}" if ref else ""
-        raise HTTPException(status_code=404, detail=f"Repository or ref not found: {owner}/{repo}{ref_suffix}")
-    if resp.status_code == 401:
-        raise HTTPException(status_code=401, detail="Your GitHub connection has expired or been revoked. Reconnect from the sidebar.")
-    if resp.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Downloading the repository from GitHub failed: {resp.text[:300]}")
-    if len(resp.content) > MAX_REPO_ZIP_BYTES:
-        raise HTTPException(status_code=413, detail="Repository archive exceeds the 200MB scan limit.")
-    return resp.content
+    return b"".join(chunks)

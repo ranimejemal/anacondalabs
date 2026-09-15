@@ -72,10 +72,20 @@ logger.addHandler(_file_handler)
 
 app = FastAPI(title="AegisLab Security Engine", version="1.0.0")
 
-# The Electron renderer loads from file:// or http://localhost — allow both.
+# The Electron renderer loads from file:// (Origin: "null" in Chromium) or,
+# in dev, http://localhost — allow only those, NOT "*". This backend binds
+# to 127.0.0.1 only, but that alone doesn't stop a malicious page open in
+# the user's REAL browser from using JS fetch() against it — an
+# Access-Control-Allow-Origin: * response is readable cross-origin by any
+# website, which would let an attacker's page silently drive scans (or,
+# now that GitHub import/AI endpoints exist, exchange OAuth codes or read
+# scan results) through the user's own already-running AegisLab instance.
+# Restricting to the app's actual origins closes that off while changing
+# nothing for the real Electron app.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["null"],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_methods=["*"],
     allow_headers=["*"],
 )

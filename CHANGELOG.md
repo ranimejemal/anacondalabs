@@ -2,6 +2,35 @@
 
 ## [Unreleased] — pending: Stripe live-account testing, code signing, beta feedback
 
+## Sprint 8 — Security hardening pass
+- **Fixed a real secret leak**: `backend/.env` (meant to hold the
+  Supabase service_role key, `ANTHROPIC_API_KEY`, and Stripe secret/
+  webhook keys) was committed to this public repo. Untracked it and
+  added it to `.gitignore`; `backend/.env.example` remains the safe
+  template. Every credential that was in that file must be treated as
+  compromised and rotated at its provider, regardless of this fix —
+  git history still contains the old blob.
+- **Locked down CORS**: `CORSMiddleware` allowed `allow_origins=["*"]`,
+  meaning any website open in the user's real browser could use `fetch()`
+  against this localhost-bound backend and read the response — enough to
+  silently trigger scans, or now, exchange GitHub OAuth codes and read
+  scan results, through the user's own running AegisLab instance.
+  Restricted to the Electron app's actual origins (`null` for a
+  `file://`-loaded page, `localhost`/`127.0.0.1` for dev) instead.
+- **GitHub repo download**: switched from buffering the full response
+  before checking the 200MB size cap to streaming with the cap enforced
+  per-chunk, matching the direct `.zip` upload path's existing behavior,
+  so an oversized archive is rejected without ever sitting fully in
+  memory first.
+- Set up a fresh Supabase project (see Sprint 7's Supabase note below)
+  and confirmed its security advisor reports zero findings.
+- Documented (rather than silently accepted) the one unavoidable
+  over-privilege in the GitHub integration: classic OAuth Apps have no
+  read-only scope that covers private repos, so `repo` (read+write) is
+  used despite AegisLab only ever reading — a GitHub App with
+  fine-grained permissions would close this gap but is a materially
+  bigger change.
+
 ## Sprint 7 — GitHub "Connect account" + repo import
 - `backend/github_integration.py`: OAuth Authorization Code flow (with
   CSRF state validation), repo listing, and repo-as-zip download via

@@ -27,9 +27,34 @@ class _FakeResponse:
         return self._json_data
 
 
+class _FakeStreamResponse:
+    """Stand-in for the object httpx.AsyncClient.stream()'s context manager
+    yields — used only by download_repo_zip's streaming download path."""
+
+    def __init__(self, status_code, content=b"", text="", chunk_size=64):
+        self.status_code = status_code
+        self.content = content
+        self.text = text or content.decode("utf-8", "replace")
+        self._chunk_size = chunk_size
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def aiter_bytes(self):
+        for i in range(0, len(self.content), self._chunk_size):
+            yield self.content[i:i + self._chunk_size]
+
+    async def aread(self):
+        return self.content
+
+
 class _FakeAsyncClient:
-    def __init__(self, behavior):
+    def __init__(self, behavior, stream_behavior=None):
         self._behavior = behavior  # callable(method, url, **kwargs) -> _FakeResponse
+        self._stream_behavior = stream_behavior  # callable(method, url, **kwargs) -> _FakeStreamResponse
 
     async def __aenter__(self):
         return self
@@ -43,9 +68,15 @@ class _FakeAsyncClient:
     async def post(self, url, **kwargs):
         return self._behavior("POST", url, **kwargs)
 
+    def stream(self, method, url, **kwargs):
+        return self._stream_behavior(method, url, **kwargs)
 
-def _install_fake_client(monkeypatch, behavior):
-    monkeypatch.setattr(github_integration.httpx, "AsyncClient", lambda *a, **kw: _FakeAsyncClient(behavior))
+
+def _install_fake_client(monkeypatch, behavior=None, stream_behavior=None):
+    monkeypatch.setattr(
+        github_integration.httpx, "AsyncClient",
+        lambda *a, **kw: _FakeAsyncClient(behavior, stream_behavior),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -181,20 +212,20 @@ def _make_zip_bytes(files: dict) -> bytes:
 async def test_download_repo_zip_success(monkeypatch):
     zip_bytes = _make_zip_bytes({"repo-main/app.js": "console.log(1)"})
 
-    def behavior(method, url, **kwargs):
-        return _FakeResponse(200, content=zip_bytes)
+    def stream_behavior(method, url, **kwargs):
+        return _FakeStreamResponse(200, content=zip_bytes)
 
-    _install_fake_client(monkeypatch, behavior)
+    _install_fake_client(monkeypatch, stream_behavior=stream_behavior)
     result = await github_integration.download_repo_zip("gho_faketoken", "octocat", "hello-world")
     assert result == zip_bytes
 
 
 @pytest.mark.asyncio
 async def test_download_repo_zip_not_found(monkeypatch):
-    def behavior(method, url, **kwargs):
-        return _FakeResponse(404, text="Not Found")
+    def stream_behavior(method, url, **kwargs):
+        return _FakeStreamResponse(404, text="Not Found")
 
-    _install_fake_client(monkeypatch, behavior)
+    _install_fake_client(monkeypatch, stream_behavior=stream_behavior)
     with pytest.raises(Exception) as exc_info:
         await github_integration.download_repo_zip("gho_faketoken", "octocat", "does-not-exist")
     assert getattr(exc_info.value, "status_code", None) == 404
@@ -204,10 +235,10 @@ async def test_download_repo_zip_not_found(monkeypatch):
 async def test_download_repo_zip_too_large_is_413(monkeypatch):
     monkeypatch.setattr(github_integration, "MAX_REPO_ZIP_BYTES", 10)
 
-    def behavior(method, url, **kwargs):
-        return _FakeResponse(200, content=b"x" * 100)
+    def stream_behavior(method, url, **kwargs):
+        return _FakeStreamResponse(200, content=b"x" * 100)
 
-    _install_fake_client(monkeypatch, behavior)
+    _install_fake_client(monkeypatch, stream_behavior=stream_behavior)
     with pytest.raises(Exception) as exc_info:
         await github_integration.download_repo_zip("gho_faketoken", "octocat", "huge-repo")
     assert getattr(exc_info.value, "status_code", None) == 413
